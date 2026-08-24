@@ -21,7 +21,15 @@ const DEFAULT_MAKEUP_2026 = [
   '2026-09-20', '2026-10-10'
 ];
 
-let state = { settings: null, actuals: {}, dayTypes: {} };
+const DEFAULT_FIXED_ITEMS = [
+  { id: 'utilities', name: '水电费', amount: '' },
+  { id: 'gym', name: '健身房月卡', amount: '' },
+  { id: 'phone', name: '话费', amount: '' },
+  { id: 'food', name: '伙食费', amount: '' },
+  { id: 'parking', name: '停车费', amount: '' }
+];
+
+let state = { settings: null, actuals: {}, dayTypes: {}, fixedItems: null };
 let currentRows = [];
 let saveTimer = null;
 let selectedDs = null;
@@ -47,6 +55,41 @@ function mondayIndex(d) {
 function typeInfo(t) {
   return { work: ['work', '工作日'], weekend: ['weekend', '周末'], holiday: ['holiday', '节假日'] }[t];
 }
+function uid() {
+  return 'f' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+function cents(n) {
+  return Math.round((Number(n) || 0) * 100) / 100;
+}
+function defaultFixedItems() {
+  return DEFAULT_FIXED_ITEMS.map((x) => ({ ...x }));
+}
+function ensureFixedItems() {
+  if (!Array.isArray(state.fixedItems)) {
+    if (state.settings && Array.isArray(state.settings.fixedItems)) {
+      state.fixedItems = state.settings.fixedItems.map((x) => ({
+        id: x.id || uid(),
+        name: x.name || '',
+        amount: x.amount
+      }));
+    } else {
+      state.fixedItems = defaultFixedItems();
+    }
+  }
+}
+function itemAmount(it) {
+  return parseFloat(it && it.amount) || 0;
+}
+function fixedTotal() {
+  ensureFixedItems();
+  return cents(state.fixedItems.reduce((sum, it) => sum + itemAmount(it), 0));
+}
+function monthlyBudgetValue() {
+  const raw = $('budget') ? $('budget').value : '';
+  if (raw !== '' && !isNaN(parseFloat(raw))) return parseFloat(raw) || 0;
+  return (state.settings && Number(state.settings.budget)) || 0;
+}
+
 function load() {
   try {
     const s = JSON.parse(localStorage.getItem(KEY));
@@ -56,6 +99,7 @@ function load() {
       if (!state.dayTypes) state.dayTypes = {};
     }
   } catch (e) { /* ignore corrupt cache */ }
+  ensureFixedItems();
 }
 function save() {
   localStorage.setItem(KEY, JSON.stringify(state));
@@ -123,7 +167,11 @@ function build() {
     return;
   }
   fillDefaultHolidayFields();
-  const budget = parseFloat($('budget').value) || 0;
+  ensureFixedItems();
+  const totalBudget = parseFloat($('budget').value) || 0;
+  const fixed = fixedTotal();
+  const flex = cents(totalBudget - fixed);
+  const budget = Math.max(0, flex);
   const rWork = parseFloat($('rateWork').value) || 0;
   const rWeekend = parseFloat($('rateWeekend').value) || 0;
   const rHoliday = parseFloat($('rateHoliday').value) || 0;
@@ -156,7 +204,10 @@ function build() {
   state.settings = {
     start: startEl,
     end: endEl,
-    budget,
+    budget: totalBudget,
+    flexibleBudget: budget,
+    fixedTotal: fixed,
+    fixedItems: state.fixedItems,
     rWork,
     rWeekend,
     rHoliday,
@@ -190,9 +241,14 @@ function render() {
   if (!currentRows.length) return;
   const s = state.settings;
   const w = currentRows.reduce((sum, r) => sum + { work: s.rWork, weekend: s.rWeekend, holiday: s.rHoliday }[r.type], 0);
-  const per = (rate) => (rate === 0 || w === 0 ? 0 : s.budget * rate / w);
+  const alloc = s.flexibleBudget != null ? s.flexibleBudget : s.budget;
+  const per = (rate) => (rate === 0 || w === 0 ? 0 : alloc * rate / w);
+  const overFixed = (s.budget || 0) < (s.fixedTotal || 0);
   $('rateInfo').textContent =
-    '📐 按比例折算后：工作日每天 ¥' + money(per(s.rWork)) +
+    '📐 灵活预算 ¥' + money(alloc) +
+    '（当月预算 ¥' + money(s.budget) + ' − 固定消费 ¥' + money(s.fixedTotal || 0) + '）' +
+    (overFixed ? '；固定消费已超过当月预算，每日预算按 0 计算。' : '') +
+    ' 按比例折算后：工作日每天 ¥' + money(per(s.rWork)) +
     ' ｜ 周末每天 ¥' + money(per(s.rWeekend)) +
     ' ｜ 节假日每天 ¥' + money(per(s.rHoliday)) +
     '（调休上班按工作日）';
@@ -327,11 +383,15 @@ function renderSummary() {
   const todayStr = fmtDate(new Date());
   const elapsed = currentRows.filter((r) => r.ds <= todayStr).length;
   renderTodayBalance();
+  renderTodaySpend();
+  const flex = s.flexibleBudget != null ? s.flexibleBudget : s.budget;
   $('summary').innerHTML =
-    '<div class="stat"><div class="label">周期总预算</div><div class="value">' + money(s.budget) + '</div></div>' +
+    '<div class="stat"><div class="label">当月预算</div><div class="value">' + money(s.budget) + '</div></div>' +
+    '<div class="stat"><div class="label">固定消费</div><div class="value">' + money(s.fixedTotal || 0) + '</div></div>' +
+    '<div class="stat"><div class="label">灵活预算</div><div class="value">' + money(flex) + '</div></div>' +
     '<div class="stat"><div class="label">累计应花</div><div class="value">' + money(totalShould) + '</div></div>' +
     '<div class="stat"><div class="label">累计实花</div><div class="value">' + money(cumActualAll) + '</div></div>' +
-    '<div class="stat"><div class="label">周期结余</div><div class="value ' + (balance >= 0 ? 'pos' : 'neg') + '">' + signed(balance) + '</div></div>' +
+    '<div class="stat"><div class="label">灵活结余</div><div class="value ' + (balance >= 0 ? 'pos' : 'neg') + '">' + signed(balance) + '</div></div>' +
     '<div class="stat"><div class="label">进度</div><div class="value">' + elapsed + '/' + currentRows.length + ' 天</div></div>';
 }
 
@@ -426,6 +486,93 @@ function exportCSV() {
   URL.revokeObjectURL(a.href);
 }
 
+function escapeHtml(str) {
+  return String(str == null ? '' : str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function renderTodaySpend() {
+  const todayStr = fmtDate(new Date());
+  const act = actualOf(todayStr);
+  if ($('todaySpendTotal')) $('todaySpendTotal').textContent = '今天已花 ¥' + money(act);
+  if ($('todaySpendHint')) $('todaySpendHint').textContent = '记到 ' + todayStr + '，确定后累加到当天消费';
+}
+
+function updateFixedSummary() {
+  const total = monthlyBudgetValue();
+  const fixed = fixedTotal();
+  const flex = cents(total - fixed);
+  const flexCls = flex < 0 ? 'neg' : '';
+  $('fixedSummary').innerHTML =
+    '当月预算 ¥' + money(total) +
+    ' − 固定消费 ¥' + money(fixed) +
+    ' ＝ 灵活预算 <span class="' + flexCls + '">¥' + money(flex) + '</span>' +
+    (flex < 0 ? '（已超预算，生成日历时每日预算按 0）' : '（用于计算每日预算）');
+}
+
+function renderFixedList() {
+  ensureFixedItems();
+  const host = $('fixedList');
+  if (!state.fixedItems.length) {
+    host.innerHTML = '<div class="fixed-empty">暂无固定消费项，可在下方添加</div>';
+    updateFixedSummary();
+    return;
+  }
+  host.innerHTML = state.fixedItems.map((it) => {
+    const amountVal = it.amount === 0 || it.amount ? it.amount : '';
+    return '<div class="fixed-item" data-id="' + escapeHtml(it.id) + '">' +
+      '<input class="fixed-name" type="text" maxlength="20" value="' + escapeHtml(it.name) + '" aria-label="项目名称">' +
+      '<input class="fixed-amount" type="number" inputmode="decimal" step="0.01" min="0" value="' + escapeHtml(amountVal) + '" placeholder="金额" aria-label="金额">' +
+      '<button class="btn-icon-del" type="button" data-del aria-label="删除">×</button>' +
+      '</div>';
+  }).join('');
+  updateFixedSummary();
+}
+
+function addFixedItem() {
+  const name = $('fixedNewName').value.trim();
+  const amount = $('fixedNewAmount').value;
+  if (!name) {
+    alert('请填写固定消费项目名称');
+    $('fixedNewName').focus();
+    return;
+  }
+  ensureFixedItems();
+  state.fixedItems.push({ id: uid(), name, amount });
+  $('fixedNewName').value = '';
+  $('fixedNewAmount').value = '';
+  scheduleSave();
+  renderFixedList();
+  $('fixedNewName').focus();
+}
+
+function addQuickSpend() {
+  const raw = $('quickAmount').value;
+  const n = cents(raw);
+  if (!String(raw).trim() || isNaN(parseFloat(raw)) || n <= 0) {
+    alert('请输入大于 0 的金额');
+    $('quickAmount').focus();
+    return;
+  }
+  const todayStr = fmtDate(new Date());
+  if (currentRows.length && !rowByDs(todayStr)) {
+    alert('今天不在当前记账周期内，无法记入当天消费');
+    return;
+  }
+  state.actuals[todayStr] = cents(actualOf(todayStr) + n);
+  $('quickAmount').value = '';
+  scheduleSave();
+  if (selectedDs === todayStr) {
+    $('sheetActual').value = state.actuals[todayStr];
+    refreshSheetStats();
+  }
+  if (currentRows.length) render();
+  else renderTodaySpend();
+}
+
 function restoreSettings() {
   const s = state.settings;
   if (!s) return false;
@@ -467,7 +614,52 @@ $('sheetActual').addEventListener('input', (e) => {
   scheduleSave();
   refreshSheetStats();
   renderSummary();
+  renderTodaySpend();
 });
+
+$('quickAdd').addEventListener('click', addQuickSpend);
+$('quickAmount').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    addQuickSpend();
+  }
+});
+
+$('fixedList').addEventListener('input', (e) => {
+  const row = e.target.closest('.fixed-item');
+  if (!row) return;
+  const item = state.fixedItems.find((x) => x.id === row.dataset.id);
+  if (!item) return;
+  if (e.target.classList.contains('fixed-name')) item.name = e.target.value;
+  if (e.target.classList.contains('fixed-amount')) item.amount = e.target.value;
+  scheduleSave();
+  updateFixedSummary();
+});
+
+$('fixedList').addEventListener('click', (e) => {
+  const del = e.target.closest('[data-del]');
+  if (!del) return;
+  const row = del.closest('.fixed-item');
+  if (!row) return;
+  state.fixedItems = state.fixedItems.filter((x) => x.id !== row.dataset.id);
+  scheduleSave();
+  renderFixedList();
+});
+
+$('fixedAdd').addEventListener('click', addFixedItem);
+$('fixedNewName').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    addFixedItem();
+  }
+});
+$('fixedNewAmount').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    addFixedItem();
+  }
+});
+$('budget').addEventListener('input', updateFixedSummary);
 
 $('sheetTypes').addEventListener('click', (e) => {
   const btn = e.target.closest('.type-btn');
@@ -478,8 +670,11 @@ $('sheetTypes').addEventListener('click', (e) => {
 
 window.addEventListener('DOMContentLoaded', () => {
   load();
+  renderFixedList();
+  renderTodaySpend();
   if (restoreSettings()) build();
   else prefills();
+  updateFixedSummary();
   $('gen').addEventListener('click', build);
   $('export').addEventListener('click', exportCSV);
   $('fillHolidays').addEventListener('click', () => {

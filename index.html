@@ -8,7 +8,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="预算记账">
-  <meta name="description" content="比例式预算记账本：按工作日/周末/节假日比例拆预算，日历记账。">
+  <meta name="description" content="比例式预算记账本：扣除每月固定消费后按工作日/周末/节假日比例拆灵活预算，日历记账。">
   <title>📒 比例式预算记账本</title>
   <link rel="manifest" href="./manifest.json">
   <link rel="icon" href="./icons/favicon.svg" type="image/svg+xml">
@@ -19,14 +19,39 @@
   <div class="wrap">
     <h1>📒 比例式预算记账本 <span class="save-status" id="saveStatus"></span></h1>
 
+    <div class="card spend-card">
+      <div class="spend-head">
+        <div>
+          <div class="spend-title">单次消费</div>
+          <div class="spend-sub" id="todaySpendHint">输入金额后点确定，累加到当天消费</div>
+        </div>
+        <div class="spend-today" id="todaySpendTotal">今天已花 ¥0.00</div>
+      </div>
+      <div class="spend-row">
+        <input id="quickAmount" type="number" inputmode="decimal" step="0.01" min="0" placeholder="输入金额（元）">
+        <button class="btn-primary" id="quickAdd" type="button">确定</button>
+      </div>
+    </div>
+
     <div class="card">
       <div class="grid">
         <div><label for="start">周期开始日期</label><input type="date" id="start"></div>
         <div><label for="end">周期结束日期</label><input type="date" id="end"></div>
-        <div><label for="budget">总预算（元）</label><input type="number" id="budget" inputmode="decimal" placeholder="如 2000"></div>
+        <div><label for="budget">当月预算（元）</label><input type="number" id="budget" inputmode="decimal" placeholder="如 2000"></div>
         <div><label for="rateWork">工作日比例</label><input type="number" id="rateWork" inputmode="decimal" placeholder="如 30" step="any"></div>
         <div><label for="rateWeekend">周末比例</label><input type="number" id="rateWeekend" inputmode="decimal" placeholder="如 100" step="any"></div>
         <div><label for="rateHoliday">节假日比例</label><input type="number" id="rateHoliday" inputmode="decimal" placeholder="如 200" step="any"></div>
+      </div>
+      <div class="fixed-section">
+        <div class="section-title">每月固定消费</div>
+        <p class="hint" style="margin:0 0 4px;">从当月预算中扣除固定消费，剩余为灵活预算，再按比例拆到每天。</p>
+        <div id="fixedList"></div>
+        <div class="fixed-add">
+          <input id="fixedNewName" type="text" maxlength="20" placeholder="自定义项目名称" autocomplete="off">
+          <input id="fixedNewAmount" type="number" inputmode="decimal" step="0.01" min="0" placeholder="金额">
+          <button class="btn-ghost" id="fixedAdd" type="button">添加</button>
+        </div>
+        <div class="fixed-summary" id="fixedSummary"></div>
       </div>
       <div class="grid" style="margin-top:10px;">
         <div>
@@ -44,7 +69,7 @@
         <button class="btn-ghost" id="export" type="button">导出 CSV</button>
         <button class="btn-danger" id="reset" type="button">清空全部记录</button>
       </div>
-      <div class="hint">💡 默认已填 2026 法定放假与调休；调休按工作日算。点日历格子可改「工作日 / 周末 / 节假日」并记花销。</div>
+      <div class="hint">💡 每日预算 = 灵活预算按工作日/周末/节假日比例拆分。单次消费会累加到当天；点日历格子可改类型或校正当日总额。</div>
     </div>
 
     <div class="card" id="summaryCard" hidden>

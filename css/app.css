@@ -92,6 +92,103 @@ button {
   margin-top: 12px;
 }
 
+.spend-card {
+  background: linear-gradient(180deg, #eff6ff 0%, #fff 52%);
+  border-color: #bfdbfe;
+}
+
+.spend-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.spend-title {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.spend-sub {
+  font-size: 12px;
+  color: #6b7280;
+  margin-top: 2px;
+}
+
+.spend-today {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1d4ed8;
+  white-space: nowrap;
+}
+
+.spend-row {
+  display: flex;
+  gap: 8px;
+}
+
+.spend-row input { flex: 1; }
+.spend-row .btn-primary {
+  flex-shrink: 0;
+  padding: 8px 20px;
+}
+
+.fixed-section {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed #e5e7eb;
+}
+
+.section-title {
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.fixed-item {
+  display: grid;
+  grid-template-columns: 1fr 110px 36px;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.fixed-add {
+  display: grid;
+  grid-template-columns: 1fr 110px auto;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.fixed-empty {
+  font-size: 13px;
+  color: #9ca3af;
+  margin-top: 8px;
+}
+
+.fixed-summary {
+  margin-top: 10px;
+  font-size: 13px;
+  color: #1e40af;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  padding: 8px 12px;
+  line-height: 1.5;
+}
+
+.btn-icon-del {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  background: #fef2f2;
+  color: #dc2626;
+  font-size: 20px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
 .hint {
   font-size: 12px;
   color: #6b7280;
@@ -341,6 +438,9 @@ button {
   .cal-cell { min-height: 64px; padding: 3px 2px 4px; }
   .cal-cell .tag { display: none; }
   .today-balance-box .big { font-size: 32px; }
+  .spend-head { flex-direction: column; gap: 6px; }
+  .fixed-item { grid-template-columns: 1fr 88px 36px; }
+  .fixed-add { grid-template-columns: 1fr 88px auto; }
 }
 
 @media (min-width: 640px) {
