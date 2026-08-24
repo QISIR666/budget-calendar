@@ -19,20 +19,6 @@
   <div class="wrap">
     <h1>📒 比例式预算记账本 <span class="save-status" id="saveStatus"></span></h1>
 
-    <div class="card spend-card">
-      <div class="spend-head">
-        <div>
-          <div class="spend-title">单次消费</div>
-          <div class="spend-sub" id="todaySpendHint">输入金额后点确定，累加到当天消费</div>
-        </div>
-        <div class="spend-today" id="todaySpendTotal">今天已花 ¥0.00</div>
-      </div>
-      <div class="spend-row">
-        <input id="quickAmount" type="number" inputmode="decimal" step="0.01" min="0" placeholder="输入金额（元）">
-        <button class="btn-primary" id="quickAdd" type="button">确定</button>
-      </div>
-    </div>
-
     <div class="card">
       <div class="grid">
         <div><label for="start">周期开始日期</label><input type="date" id="start"></div>
@@ -53,29 +39,32 @@
         </div>
         <div class="fixed-summary" id="fixedSummary"></div>
       </div>
-      <div class="grid" style="margin-top:10px;">
-        <div>
-          <label for="holidays">法定节假日（默认已填 2026）</label>
-          <textarea id="holidays" placeholder="默认加载国务院 2026 放假安排"></textarea>
-        </div>
-        <div>
-          <label for="makeup">调休上班日（按工作日，默认已填）</label>
-          <textarea id="makeup" placeholder="周末补班日期，按工作日比例"></textarea>
-        </div>
-      </div>
       <div class="actions">
         <button class="btn-primary" id="gen" type="button">生成预算日历</button>
-        <button class="btn-ghost" id="fillHolidays" type="button">恢复法定节假日</button>
         <button class="btn-ghost" id="export" type="button">导出 CSV</button>
         <button class="btn-danger" id="reset" type="button">清空全部记录</button>
       </div>
-      <div class="hint">💡 每日预算 = 灵活预算按工作日/周末/节假日比例拆分。单次消费会累加到当天；点日历格子可改类型或校正当日总额。</div>
+      <div class="hint">💡 每日预算 = 灵活预算按工作日/周末/节假日比例拆分。已内置 2026 法定放假与调休；点日历格子可改当天类型或校正当日总额。</div>
     </div>
 
     <div class="card" id="summaryCard" hidden>
       <div class="today-balance-box" id="todayBalanceBox"></div>
       <div class="ratebox" id="rateInfo"></div>
       <div class="summary" id="summary"></div>
+    </div>
+
+    <div class="card spend-card" id="spendCard" hidden>
+      <div class="spend-head">
+        <div>
+          <div class="spend-title">单次消费</div>
+          <div class="spend-sub" id="todaySpendHint">输入金额后点确定，累加到当天消费</div>
+        </div>
+        <div class="spend-today" id="todaySpendTotal">今天已花 ¥0.00</div>
+      </div>
+      <div class="spend-row">
+        <input id="quickAmount" type="number" inputmode="decimal" step="0.01" min="0" placeholder="输入金额（元）">
+        <button class="btn-primary" id="quickAdd" type="button">确定</button>
+      </div>
     </div>
 
     <div class="card" id="calCard" hidden>

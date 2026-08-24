@@ -124,15 +124,6 @@ function scheduleSave() {
   }, 500);
 }
 
-function splitDates(s) {
-  return String(s || '').split(/[,\s，、;；]+/).map((x) => x.trim()).filter(Boolean);
-}
-
-function fillDefaultHolidayFields() {
-  if (!$('holidays').value.trim()) $('holidays').value = DEFAULT_HOLIDAYS_2026.join(',');
-  if (!$('makeup').value.trim()) $('makeup').value = DEFAULT_MAKEUP_2026.join(',');
-}
-
 function prefills() {
   const now = new Date();
   if (!$('start').value) {
@@ -146,7 +137,6 @@ function prefills() {
   if (!$('rateWork').value) $('rateWork').value = '30';
   if (!$('rateWeekend').value) $('rateWeekend').value = '100';
   if (!$('rateHoliday').value) $('rateHoliday').value = '200';
-  fillDefaultHolidayFields();
 }
 
 function classifyDay(ds, date, holidaySet, makeupSet) {
@@ -166,7 +156,6 @@ function build() {
     alert('请检查周期日期是否填写正确');
     return;
   }
-  fillDefaultHolidayFields();
   ensureFixedItems();
   const totalBudget = parseFloat($('budget').value) || 0;
   const fixed = fixedTotal();
@@ -175,8 +164,8 @@ function build() {
   const rWork = parseFloat($('rateWork').value) || 0;
   const rWeekend = parseFloat($('rateWeekend').value) || 0;
   const rHoliday = parseFloat($('rateHoliday').value) || 0;
-  const holidaySet = new Set(splitDates($('holidays').value));
-  const makeupSet = new Set(splitDates($('makeup').value));
+  const holidaySet = new Set(DEFAULT_HOLIDAYS_2026);
+  const makeupSet = new Set(DEFAULT_MAKEUP_2026);
 
   const days = [];
   for (let d = new Date(start); d <= end; d = addDays(d, 1)) {
@@ -211,8 +200,8 @@ function build() {
     rWork,
     rWeekend,
     rHoliday,
-    holidays: $('holidays').value,
-    makeup: $('makeup').value
+    holidays: DEFAULT_HOLIDAYS_2026.join(','),
+    makeup: DEFAULT_MAKEUP_2026.join(',')
   };
   if (!state.actuals) state.actuals = {};
   if (!state.dayTypes) state.dayTypes = {};
@@ -254,6 +243,7 @@ function render() {
     '（调休上班按工作日）';
 
   renderCalendars();
+  $('spendCard').hidden = false;
   $('calCard').hidden = false;
   $('summaryCard').hidden = false;
   renderSummary();
@@ -582,9 +572,6 @@ function restoreSettings() {
   $('rateWork').value = s.rWork;
   $('rateWeekend').value = s.rWeekend;
   $('rateHoliday').value = s.rHoliday;
-  $('holidays').value = s.holidays || '';
-  $('makeup').value = s.makeup || '';
-  fillDefaultHolidayFields();
   return true;
 }
 
@@ -677,11 +664,6 @@ window.addEventListener('DOMContentLoaded', () => {
   updateFixedSummary();
   $('gen').addEventListener('click', build);
   $('export').addEventListener('click', exportCSV);
-  $('fillHolidays').addEventListener('click', () => {
-    $('holidays').value = DEFAULT_HOLIDAYS_2026.join(',');
-    $('makeup').value = DEFAULT_MAKEUP_2026.join(',');
-    scheduleSave();
-  });
   $('reset').addEventListener('click', () => {
     if (confirm('确定清空所有记录？')) {
       localStorage.removeItem(KEY);
