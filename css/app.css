@@ -43,8 +43,26 @@ h1 {
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.date-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.date-row > div,
+.grid > div {
+  min-width: 0;
+}
+
+input[type="date"] {
+  min-width: 0;
+  max-width: 100%;
+  padding: 8px 6px;
 }
 
 label {
@@ -135,56 +153,61 @@ button {
 }
 
 .fixed-section {
-  margin-top: 14px;
-  padding-top: 14px;
+  margin-top: 10px;
+  padding-top: 10px;
   border-top: 1px dashed #e5e7eb;
 }
 
-.section-title {
-  font-size: 14px;
-  font-weight: 700;
+.fixed-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   margin-bottom: 4px;
+}
+
+.section-title {
+  font-size: 13px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.btn-add-fixed {
+  padding: 4px 10px;
+  font-size: 13px;
 }
 
 .fixed-item {
   display: grid;
-  grid-template-columns: 1fr 110px 36px;
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) 76px 28px;
+  gap: 6px;
   align-items: center;
-  margin-top: 8px;
+  margin-top: 6px;
 }
 
-.fixed-add {
-  display: grid;
-  grid-template-columns: 1fr 110px auto;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.fixed-empty {
-  font-size: 13px;
-  color: #9ca3af;
-  margin-top: 8px;
+.fixed-item input {
+  padding: 6px 8px;
+  font-size: 15px;
 }
 
 .fixed-summary {
-  margin-top: 10px;
-  font-size: 13px;
+  margin-top: 8px;
+  font-size: 12px;
   color: #1e40af;
   background: #eff6ff;
   border: 1px solid #bfdbfe;
   border-radius: 8px;
-  padding: 8px 12px;
-  line-height: 1.5;
+  padding: 6px 10px;
+  line-height: 1.45;
 }
 
 .btn-icon-del {
-  width: 36px;
-  height: 36px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   background: #fef2f2;
   color: #dc2626;
-  font-size: 20px;
+  font-size: 16px;
   line-height: 1;
   flex-shrink: 0;
 }
@@ -435,15 +458,22 @@ button {
 }
 
 @media (max-width: 420px) {
+  body {
+    padding: 12px;
+    padding-top: max(12px, env(safe-area-inset-top));
+    padding-bottom: max(20px, env(safe-area-inset-bottom));
+  }
+  .card { padding: 12px; }
+  h1 { font-size: 20px; margin: 4px 0 12px; }
   .cal-cell { min-height: 64px; padding: 3px 2px 4px; }
   .cal-cell .tag { display: none; }
   .today-balance-box .big { font-size: 32px; }
   .spend-head { flex-direction: column; gap: 6px; }
-  .fixed-item { grid-template-columns: 1fr 88px 36px; }
-  .fixed-add { grid-template-columns: 1fr 88px auto; }
+  .fixed-item { grid-template-columns: minmax(0, 1fr) 68px 28px; }
 }
 
 @media (min-width: 640px) {
+  .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .sheet-mask { align-items: center; padding: 24px; }
   .sheet {
     border-radius: 16px;

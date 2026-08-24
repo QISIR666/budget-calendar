@@ -20,23 +20,22 @@
     <h1>📒 比例式预算记账本 <span class="save-status" id="saveStatus"></span></h1>
 
     <div class="card">
+      <div class="date-row">
+        <div><label for="start">开始日期</label><input type="date" id="start"></div>
+        <div><label for="end">结束日期</label><input type="date" id="end"></div>
+      </div>
       <div class="grid">
-        <div><label for="start">周期开始日期</label><input type="date" id="start"></div>
-        <div><label for="end">周期结束日期</label><input type="date" id="end"></div>
         <div><label for="budget">当月预算（元）</label><input type="number" id="budget" inputmode="decimal" placeholder="如 2000"></div>
         <div><label for="rateWork">工作日比例</label><input type="number" id="rateWork" inputmode="decimal" placeholder="如 30" step="any"></div>
         <div><label for="rateWeekend">周末比例</label><input type="number" id="rateWeekend" inputmode="decimal" placeholder="如 100" step="any"></div>
         <div><label for="rateHoliday">节假日比例</label><input type="number" id="rateHoliday" inputmode="decimal" placeholder="如 200" step="any"></div>
       </div>
       <div class="fixed-section">
-        <div class="section-title">每月固定消费</div>
-        <p class="hint" style="margin:0 0 4px;">从当月预算中扣除固定消费，剩余为灵活预算，再按比例拆到每天。</p>
-        <div id="fixedList"></div>
-        <div class="fixed-add">
-          <input id="fixedNewName" type="text" maxlength="20" placeholder="自定义项目名称" autocomplete="off">
-          <input id="fixedNewAmount" type="number" inputmode="decimal" step="0.01" min="0" placeholder="金额">
-          <button class="btn-ghost" id="fixedAdd" type="button">添加</button>
+        <div class="fixed-head">
+          <div class="section-title">每月固定消费</div>
+          <button class="btn-ghost btn-add-fixed" id="fixedAdd" type="button">＋ 添加</button>
         </div>
+        <div id="fixedList"></div>
         <div class="fixed-summary" id="fixedSummary"></div>
       </div>
       <div class="actions">

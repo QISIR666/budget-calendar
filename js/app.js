@@ -498,23 +498,18 @@ function updateFixedSummary() {
   const flexCls = flex < 0 ? 'neg' : '';
   $('fixedSummary').innerHTML =
     '当月预算 ¥' + money(total) +
-    ' − 固定消费 ¥' + money(fixed) +
-    ' ＝ 灵活预算 <span class="' + flexCls + '">¥' + money(flex) + '</span>' +
-    (flex < 0 ? '（已超预算，生成日历时每日预算按 0）' : '（用于计算每日预算）');
+    ' − 固定 ¥' + money(fixed) +
+    ' ＝ 灵活 <span class="' + flexCls + '">¥' + money(flex) + '</span>' +
+    (flex < 0 ? '（已超预算）' : '');
 }
 
 function renderFixedList() {
   ensureFixedItems();
   const host = $('fixedList');
-  if (!state.fixedItems.length) {
-    host.innerHTML = '<div class="fixed-empty">暂无固定消费项，可在下方添加</div>';
-    updateFixedSummary();
-    return;
-  }
   host.innerHTML = state.fixedItems.map((it) => {
     const amountVal = it.amount === 0 || it.amount ? it.amount : '';
     return '<div class="fixed-item" data-id="' + escapeHtml(it.id) + '">' +
-      '<input class="fixed-name" type="text" maxlength="20" value="' + escapeHtml(it.name) + '" aria-label="项目名称">' +
+      '<input class="fixed-name" type="text" maxlength="20" value="' + escapeHtml(it.name) + '" placeholder="项目名称" aria-label="项目名称">' +
       '<input class="fixed-amount" type="number" inputmode="decimal" step="0.01" min="0" value="' + escapeHtml(amountVal) + '" placeholder="金额" aria-label="金额">' +
       '<button class="btn-icon-del" type="button" data-del aria-label="删除">×</button>' +
       '</div>';
@@ -523,20 +518,12 @@ function renderFixedList() {
 }
 
 function addFixedItem() {
-  const name = $('fixedNewName').value.trim();
-  const amount = $('fixedNewAmount').value;
-  if (!name) {
-    alert('请填写固定消费项目名称');
-    $('fixedNewName').focus();
-    return;
-  }
   ensureFixedItems();
-  state.fixedItems.push({ id: uid(), name, amount });
-  $('fixedNewName').value = '';
-  $('fixedNewAmount').value = '';
+  state.fixedItems.push({ id: uid(), name: '', amount: '' });
   scheduleSave();
   renderFixedList();
-  $('fixedNewName').focus();
+  const names = document.querySelectorAll('#fixedList .fixed-name');
+  if (names.length) names[names.length - 1].focus();
 }
 
 function addQuickSpend() {
@@ -634,18 +621,6 @@ $('fixedList').addEventListener('click', (e) => {
 });
 
 $('fixedAdd').addEventListener('click', addFixedItem);
-$('fixedNewName').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    addFixedItem();
-  }
-});
-$('fixedNewAmount').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    addFixedItem();
-  }
-});
 $('budget').addEventListener('input', updateFixedSummary);
 
 $('sheetTypes').addEventListener('click', (e) => {
