@@ -298,11 +298,8 @@ button {
 
 .unexpected-section {
   margin-top: 12px;
-  padding: 10px;
-  border-top: none;
-  border-radius: 10px;
-  background: #fffaf5;
-  box-shadow: inset 0 0 0 1px #fed7aa;
+  padding-top: 12px;
+  border-top: 1px dashed #e5e7eb;
 }
 
 .unexpected-item {
@@ -321,9 +318,9 @@ button {
 .unexpected-summary {
   margin-top: 8px;
   font-size: 12px;
-  color: #9a3412;
-  background: #fff7ed;
-  border: 1px solid #fed7aa;
+  color: #475569;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
   border-radius: 8px;
   padding: 6px 10px;
   line-height: 1.45;
@@ -345,6 +342,7 @@ button {
 
 .pos { color: #16a34a; }
 .neg { color: #dc2626; }
+.exp { color: #0369a1; }
 
 .ratebox {
   background: #eff6ff;

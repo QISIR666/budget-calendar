@@ -743,7 +743,6 @@ function renderSummary() {
   const balance = totalShould - cumActualAll;
   const todayStr = fmtDate(new Date());
   const elapsed = currentRows.filter((r) => r.ds <= todayStr).length;
-  const remaining = currentRows.filter((r) => r.ds >= todayStr).length;
   renderTodayBalance();
   renderTodaySpend();
   const paid = paidFixedTotal();
@@ -751,17 +750,17 @@ function renderSummary() {
   const fixedNow = fixedTotal();
   const flex = cents((s.budget || 0) - fixedNow);
   const totalSpend = cents(cumActualAll + paid + unexpected);
-  const actualBal = cents((s.budget || 0) - totalSpend);
-  const dailyAvail = remaining > 0 ? cents(balance / remaining) : null;
+  const actualBal = cents((s.budget || 0) - cumActualAll - paid);
+  const flexLeftPct = flex > 0 ? Math.round(balance / flex * 100) : null;
   $('summary').innerHTML =
     '<div class="stat"><div class="label">当月预算</div><div class="value">' + money(s.budget) + '</div></div>' +
     '<div class="stat"><div class="label">灵活预算</div><div class="value">' + money(flex) + '</div></div>' +
-    '<div class="stat"><div class="label">日常已花</div><div class="value">' + money(cumActualAll) + '</div></div>' +
-    '<div class="stat"><div class="label">总支出</div><div class="value">' + money(totalSpend) + '</div></div>' +
-    '<div class="stat"><div class="label">灵活结余</div><div class="value ' + (balance >= 0 ? 'pos' : 'neg') + '">' + signed(balance) + '</div></div>' +
+    '<div class="stat"><div class="label">总支出</div><div class="value exp">' + money(totalSpend) + '</div></div>' +
+    '<div class="stat"><div class="label">灵活支出</div><div class="value exp">' + money(cumActualAll) + '</div></div>' +
     '<div class="stat"><div class="label">实际结余</div><div class="value ' + (actualBal >= 0 ? 'pos' : 'neg') + '">' + signed(actualBal) + '</div></div>' +
+    '<div class="stat"><div class="label">灵活结余</div><div class="value ' + (balance >= 0 ? 'pos' : 'neg') + '">' + signed(balance) + '</div></div>' +
     '<div class="stat"><div class="label">进度</div><div class="value">' + elapsed + '/' + currentRows.length + ' 天</div></div>' +
-    '<div class="stat"><div class="label">日均可花</div><div class="value">' + (dailyAvail == null ? '—' : money(dailyAvail)) + '</div></div>';
+    '<div class="stat"><div class="label">灵活剩余%</div><div class="value ' + (flexLeftPct == null ? '' : flexLeftPct >= 0 ? 'pos' : 'neg') + '">' + (flexLeftPct == null ? '—' : flexLeftPct + '%') + '</div></div>';
 }
 
 function syncTypeButtons(type) {
