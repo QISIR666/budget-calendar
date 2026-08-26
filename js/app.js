@@ -44,6 +44,11 @@ function parseDate(s) {
   const a = s.split('-').map(Number);
   return new Date(a[0], a[1] - 1, a[2]);
 }
+function addDays(d, n) {
+  const r = new Date(d);
+  r.setDate(r.getDate() + n);
+  return r;
+}
 function addMonths(d, n) {
   const r = new Date(d.getFullYear(), d.getMonth(), d.getDate());
   const day = r.getDate();
