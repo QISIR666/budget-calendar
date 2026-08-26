@@ -1,4 +1,4 @@
-const CACHE = 'budget-calendar-v5';
+const CACHE = 'budget-calendar-v6';
 const ASSETS = [
   './',
   './index.html',

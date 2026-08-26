@@ -59,10 +59,32 @@ h1 {
   min-width: 0;
 }
 
-.cycle-label {
-  margin-top: 6px;
-  font-size: 12px;
-  color: #6b7280;
+.cycle-switch {
+  margin-top: 8px;
+}
+
+.cycle-switch-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.cycle-switch-row select {
+  flex: 1;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 16px;
+  font-family: inherit;
+  background: #fff;
+  color: inherit;
+}
+
+.cycle-switch-row .btn-ghost {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  white-space: nowrap;
 }
 
 input[type="date"] {

@@ -33,6 +33,8 @@ let state = { settings: null, actuals: {}, dayTypes: {}, fixedItems: null, cycle
 let currentRows = [];
 let saveTimer = null;
 let selectedDs = null;
+let cycleSelectLock = false;
+const DATA_VERSION = 3;
 const CYCLE_OVERLAP_THRESHOLD = 0.5;
 
 function fmtDate(d) {
@@ -42,10 +44,20 @@ function parseDate(s) {
   const a = s.split('-').map(Number);
   return new Date(a[0], a[1] - 1, a[2]);
 }
-function addDays(d, n) {
-  const r = new Date(d);
-  r.setDate(r.getDate() + n);
+function addMonths(d, n) {
+  const r = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const day = r.getDate();
+  r.setDate(1);
+  r.setMonth(r.getMonth() + n);
+  const last = new Date(r.getFullYear(), r.getMonth() + 1, 0).getDate();
+  r.setDate(Math.min(day, last));
   return r;
+}
+function nextCycleRange(cur) {
+  const end = parseDate(cur.end);
+  const startNext = addDays(end, 1);
+  const endNext = addMonths(end, 1);
+  return { start: fmtDate(startNext), end: fmtDate(endNext) };
 }
 function weekdayCN(d) {
   return ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][d.getDay()];
@@ -231,16 +243,65 @@ function resolveCycle(start, end) {
   bindCycleItems(neu);
   return { cycle: neu, kind: 'new' };
 }
-function updateCycleLabel() {
-  const el = $('cycleLabel');
-  if (!el) return;
+function persistCurrentCycleInPlace() {
   const cur = getCurrentCycle();
-  if (!cur || !cur.start || !cur.end) {
-    el.textContent = '';
+  if (!cur) return;
+  const meta = readFormMeta();
+  cur.budget = meta.budget;
+  cur.rWork = meta.rWork;
+  cur.rWeekend = meta.rWeekend;
+  cur.rHoliday = meta.rHoliday;
+  cur.fixedItems = (state.fixedItems || []).map(normalizeFixedItem);
+  state.fixedItems = cur.fixedItems;
+  cur.updatedAt = Date.now();
+}
+function renderCycleSelect() {
+  const sel = $('cycleSelect');
+  if (!sel) return;
+  ensureCycles();
+  const cycles = state.cycles
+    .filter((c) => c && c.start && c.end)
+    .slice()
+    .sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : String(a.end).localeCompare(String(b.end))));
+  cycleSelectLock = true;
+  if (!cycles.length) {
+    sel.innerHTML = '<option value="">暂无已保存周期</option>';
+    sel.disabled = true;
+  } else {
+    sel.disabled = false;
+    sel.innerHTML = cycles.map((c) => {
+      const selected = c.id === state.currentCycleId ? ' selected' : '';
+      return '<option value="' + escapeHtml(c.id) + '"' + selected + '>' +
+        escapeHtml(c.start) + ' 至 ' + escapeHtml(c.end) + '</option>';
+    }).join('');
+  }
+  cycleSelectLock = false;
+}
+function switchToCycle(id) {
+  ensureCycles();
+  const cyc = state.cycles.find((c) => c.id === id);
+  if (!cyc) return;
+  persistCurrentCycleInPlace();
+  $('start').value = cyc.start;
+  $('end').value = cyc.end;
+  writeFormMeta(cyc);
+  bindCycleItems(cyc);
+  build();
+}
+function goNextCycle() {
+  const cur = getCurrentCycle();
+  if (!cur || !cur.end) {
+    alert('请先生成当前周期');
     return;
   }
-  const n = (state.cycles || []).length;
-  el.textContent = '本周期 ' + cur.start + ' 至 ' + cur.end + (n > 1 ? '（已存 ' + n + ' 个周期）' : '');
+  persistCurrentCycleInPlace();
+  const next = nextCycleRange(cur);
+  $('start').value = next.start;
+  $('end').value = next.end;
+  build();
+}
+function updateCycleLabel() {
+  renderCycleSelect();
 }
 
 function migrateLegacyCycle() {
@@ -536,37 +597,20 @@ function asOfToday() {
 function renderTodayBalance() {
   const box = $('todayBalanceBox');
   const info = asOfToday();
-  const paid = paidFixedTotal();
-  const unpaid = unpaidFixedTotal();
-  const monthBudget = (state.settings && Number(state.settings.budget)) || 0;
   if (!info) {
     box.innerHTML =
-      '<div class="label">📌 截至今日结余</div>' +
+      '<div class="label">📌 截至今日灵活结余</div>' +
       '<div class="big" style="color:#94a3b8;">—</div>' +
       '<div class="sub">今天不在当前记账周期内</div>';
     return;
   }
   const flexCls = info.bal >= 0 ? 'pos' : 'neg';
-  const actualBal = cents(monthBudget - info.cumActual - paid);
-  const actCls = actualBal >= 0 ? 'pos' : 'neg';
   const typeTxt = info.inCycle ? typeInfo(info.last.type)[1] : '周期已过完';
   const asOf = info.inCycle ? info.todayStr : info.last.ds;
   box.innerHTML =
-    '<div class="label">📌 截至 ' + asOf + ' · ' + typeTxt + '</div>' +
-    '<div class="bal-pair">' +
-      '<div class="bal-col">' +
-        '<div class="label">灵活结余</div>' +
-        '<div class="big ' + flexCls + '">' + signed(info.bal) + '</div>' +
-        '<div class="sub">日常额度还剩这些</div>' +
-      '</div>' +
-      '<div class="bal-col">' +
-        '<div class="label">实际结余</div>' +
-        '<div class="big ' + actCls + '">' + signed(actualBal) + '</div>' +
-        '<div class="sub">未付固定 ¥' + money(unpaid) + '</div>' +
-      '</div>' +
-    '</div>' +
-    '<div class="sub">日常应花 ¥' + money(info.cumShould) + '，日常已花 ¥' + money(info.cumActual) +
-    '，固定已付 ¥' + money(paid) + '</div>';
+    '<div class="label">📌 截至今日灵活结余（' + asOf + ' · ' + typeTxt + '）</div>' +
+    '<div class="big ' + flexCls + '">' + signed(info.bal) + '</div>' +
+    '<div class="sub">截至今日应花 ¥' + money(info.cumShould) + '，已花 ¥' + money(info.cumActual) + '</div>';
 }
 
 function renderSummary() {
@@ -653,6 +697,70 @@ function setDayType(ds, type) {
   openSheet(keep);
 }
 
+function downloadBlob(filename, blob) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function exportBackup() {
+  persistCurrentCycleInPlace();
+  save();
+  const payload = {
+    app: 'budget-calendar',
+    version: DATA_VERSION,
+    exportedAt: new Date().toISOString(),
+    state: {
+      settings: state.settings,
+      actuals: state.actuals || {},
+      dayTypes: state.dayTypes || {},
+      cycles: state.cycles || [],
+      currentCycleId: state.currentCycleId,
+      fixedItems: state.fixedItems
+    }
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8;' });
+  downloadBlob('预算记账备份_' + fmtDate(new Date()) + '.json', blob);
+}
+
+function normalizeImportedState(raw) {
+  const incoming = raw && raw.state ? raw.state : raw;
+  if (!incoming || typeof incoming !== 'object') return null;
+  const hasData = incoming.actuals || incoming.cycles || incoming.settings || incoming.fixedItems;
+  if (!hasData) return null;
+  return {
+    settings: incoming.settings || null,
+    actuals: incoming.actuals || {},
+    dayTypes: incoming.dayTypes || {},
+    cycles: Array.isArray(incoming.cycles) ? incoming.cycles : [],
+    currentCycleId: incoming.currentCycleId || null,
+    fixedItems: incoming.fixedItems || null
+  };
+}
+
+function importBackupFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const parsed = JSON.parse(String(reader.result || ''));
+      const next = normalizeImportedState(parsed);
+      if (!next) {
+        alert('不是有效的备份文件');
+        return;
+      }
+      if (!confirm('导入会覆盖本机当前全部数据，确定继续？')) return;
+      localStorage.setItem(KEY, JSON.stringify(next));
+      location.reload();
+    } catch (err) {
+      alert('无法解析该文件，请选择由本应用导出的 JSON 备份');
+    }
+  };
+  reader.readAsText(file);
+}
+
 function exportCSV() {
   if (!currentRows.length) {
     alert('请先生成预算日历');
@@ -680,11 +788,7 @@ function exportCSV() {
     ].join(','));
   });
   const blob = new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = '预算记账_' + state.settings.start + '_至_' + state.settings.end + '.csv';
-  a.click();
-  URL.revokeObjectURL(a.href);
+  downloadBlob('预算记账_' + state.settings.start + '_至_' + state.settings.end + '.csv', blob);
 }
 
 function escapeHtml(str) {
@@ -880,7 +984,21 @@ window.addEventListener('DOMContentLoaded', () => {
   updateCycleLabel();
   updateFixedSummary();
   $('gen').addEventListener('click', build);
+  $('nextCycle').addEventListener('click', goNextCycle);
+  $('cycleSelect').addEventListener('change', (e) => {
+    if (cycleSelectLock) return;
+    const id = e.target.value;
+    if (!id) return;
+    switchToCycle(id);
+  });
   $('export').addEventListener('click', exportCSV);
+  $('exportData').addEventListener('click', exportBackup);
+  $('importData').addEventListener('click', () => $('importFile').click());
+  $('importFile').addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
+    importBackupFile(file);
+    e.target.value = '';
+  });
   $('reset').addEventListener('click', () => {
     if (confirm('确定清空所有记录？')) {
       localStorage.removeItem(KEY);
