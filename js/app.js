@@ -29,10 +29,11 @@ const DEFAULT_FIXED_ITEMS = [
   { id: 'parking', name: '停车费', amount: '' }
 ];
 
-let state = { settings: null, actuals: {}, dayTypes: {}, fixedItems: null };
+let state = { settings: null, actuals: {}, dayTypes: {}, fixedItems: null, cycles: [], currentCycleId: null };
 let currentRows = [];
 let saveTimer = null;
 let selectedDs = null;
+const CYCLE_OVERLAP_THRESHOLD = 0.5;
 
 function fmtDate(d) {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -62,23 +63,58 @@ function cents(n) {
   return Math.round((Number(n) || 0) * 100) / 100;
 }
 function defaultFixedItems() {
-  return DEFAULT_FIXED_ITEMS.map((x) => ({ ...x }));
+  return DEFAULT_FIXED_ITEMS.map((x) => normalizeFixedItem({ ...x }));
+}
+function normalizeFixedItem(it) {
+  return {
+    id: (it && it.id) || uid(),
+    name: (it && it.name) || '',
+    amount: it ? it.amount : '',
+    paid: !!(it && it.paid)
+  };
+}
+function cloneFixedItems(items, resetPaid) {
+  return (items || []).map((it) => normalizeFixedItem({
+    id: uid(),
+    name: it.name,
+    amount: it.amount,
+    paid: resetPaid ? false : it.paid
+  }));
+}
+function ensureCycles() {
+  if (!Array.isArray(state.cycles)) state.cycles = [];
 }
 function ensureFixedItems() {
+  ensureCycles();
   if (!Array.isArray(state.fixedItems)) {
-    if (state.settings && Array.isArray(state.settings.fixedItems)) {
-      state.fixedItems = state.settings.fixedItems.map((x) => ({
-        id: x.id || uid(),
-        name: x.name || '',
-        amount: x.amount
-      }));
+    const cur = getCurrentCycle();
+    if (cur && Array.isArray(cur.fixedItems)) {
+      state.fixedItems = cur.fixedItems.map(normalizeFixedItem);
+    } else if (state.settings && Array.isArray(state.settings.fixedItems)) {
+      state.fixedItems = state.settings.fixedItems.map(normalizeFixedItem);
     } else {
       state.fixedItems = defaultFixedItems();
     }
+  } else {
+    state.fixedItems = state.fixedItems.map(normalizeFixedItem);
   }
+  const cur = getCurrentCycle();
+  if (cur) cur.fixedItems = state.fixedItems;
+}
+function getCurrentCycle() {
+  ensureCycles();
+  return state.cycles.find((c) => c.id === state.currentCycleId) || null;
 }
 function itemAmount(it) {
   return parseFloat(it && it.amount) || 0;
+}
+function paidFixedTotal() {
+  ensureFixedItems();
+  return cents(state.fixedItems.reduce((sum, it) => sum + (it.paid ? itemAmount(it) : 0), 0));
+}
+function unpaidFixedTotal() {
+  ensureFixedItems();
+  return cents(state.fixedItems.reduce((sum, it) => sum + (it.paid ? 0 : itemAmount(it)), 0));
 }
 function fixedTotal() {
   ensureFixedItems();
@@ -90,6 +126,152 @@ function monthlyBudgetValue() {
   return (state.settings && Number(state.settings.budget)) || 0;
 }
 
+function daysInclusive(startStr, endStr) {
+  const a = parseDate(startStr);
+  const b = parseDate(endStr);
+  if (isNaN(a) || isNaN(b) || a > b) return 0;
+  return Math.round((b - a) / 86400000) + 1;
+}
+function overlapDays(aStart, aEnd, bStart, bEnd) {
+  const a1 = parseDate(aStart);
+  const a2 = parseDate(aEnd);
+  const b1 = parseDate(bStart);
+  const b2 = parseDate(bEnd);
+  if ([a1, a2, b1, b2].some((d) => isNaN(d))) return 0;
+  const s = a1 > b1 ? a1 : b1;
+  const e = a2 < b2 ? a2 : b2;
+  if (s > e) return 0;
+  return Math.round((e - s) / 86400000) + 1;
+}
+function scoreCycleMatch(cyc, start, end) {
+  if (!cyc || !cyc.start || !cyc.end) return null;
+  if (cyc.start === start) {
+    return { cyc, rank: 2, overlap: overlapDays(cyc.start, cyc.end, start, end) };
+  }
+  const ov = overlapDays(cyc.start, cyc.end, start, end);
+  const minLen = Math.min(daysInclusive(cyc.start, cyc.end), daysInclusive(start, end));
+  if (minLen > 0 && ov / minLen >= CYCLE_OVERLAP_THRESHOLD) {
+    return { cyc, rank: 1, overlap: ov };
+  }
+  return null;
+}
+function findMatchingCycle(start, end) {
+  ensureCycles();
+  const hits = state.cycles.map((c) => scoreCycleMatch(c, start, end)).filter(Boolean);
+  if (!hits.length) return null;
+  hits.sort((a, b) => {
+    if (b.rank !== a.rank) return b.rank - a.rank;
+    if (b.overlap !== a.overlap) return b.overlap - a.overlap;
+    if (a.cyc.id === state.currentCycleId) return -1;
+    if (b.cyc.id === state.currentCycleId) return 1;
+    return (b.cyc.updatedAt || 0) - (a.cyc.updatedAt || 0);
+  });
+  return hits[0].cyc;
+}
+function readFormMeta() {
+  return {
+    budget: parseFloat($('budget').value) || 0,
+    rWork: parseFloat($('rateWork').value) || 0,
+    rWeekend: parseFloat($('rateWeekend').value) || 0,
+    rHoliday: parseFloat($('rateHoliday').value) || 0
+  };
+}
+function writeFormMeta(cyc) {
+  if (cyc.budget != null) $('budget').value = cyc.budget;
+  if (cyc.rWork != null) $('rateWork').value = cyc.rWork;
+  if (cyc.rWeekend != null) $('rateWeekend').value = cyc.rWeekend;
+  if (cyc.rHoliday != null) $('rateHoliday').value = cyc.rHoliday;
+}
+function bindCycleItems(cyc) {
+  cyc.fixedItems = (cyc.fixedItems || []).map(normalizeFixedItem);
+  state.fixedItems = cyc.fixedItems;
+  state.currentCycleId = cyc.id;
+}
+function applyWorkingToCycle(cyc, start, end) {
+  const meta = readFormMeta();
+  cyc.start = start;
+  cyc.end = end;
+  cyc.budget = meta.budget;
+  cyc.rWork = meta.rWork;
+  cyc.rWeekend = meta.rWeekend;
+  cyc.rHoliday = meta.rHoliday;
+  cyc.fixedItems = state.fixedItems.map(normalizeFixedItem);
+  state.fixedItems = cyc.fixedItems;
+  cyc.updatedAt = Date.now();
+  state.currentCycleId = cyc.id;
+}
+function resolveCycle(start, end) {
+  ensureCycles();
+  ensureFixedItems();
+  const match = findMatchingCycle(start, end);
+  const current = getCurrentCycle();
+  if (match && current && match.id === current.id) {
+    applyWorkingToCycle(match, start, end);
+    return { cycle: match, kind: 'same' };
+  }
+  if (match) {
+    match.start = start;
+    match.end = end;
+    match.updatedAt = Date.now();
+    writeFormMeta(match);
+    bindCycleItems(match);
+    return { cycle: match, kind: 'switch' };
+  }
+  const neu = {
+    id: uid(),
+    start,
+    end,
+    updatedAt: Date.now(),
+    ...readFormMeta(),
+    fixedItems: current
+      ? cloneFixedItems(state.fixedItems, true)
+      : state.fixedItems.map(normalizeFixedItem)
+  };
+  state.cycles.push(neu);
+  bindCycleItems(neu);
+  return { cycle: neu, kind: 'new' };
+}
+function updateCycleLabel() {
+  const el = $('cycleLabel');
+  if (!el) return;
+  const cur = getCurrentCycle();
+  if (!cur || !cur.start || !cur.end) {
+    el.textContent = '';
+    return;
+  }
+  const n = (state.cycles || []).length;
+  el.textContent = '本周期 ' + cur.start + ' 至 ' + cur.end + (n > 1 ? '（已存 ' + n + ' 个周期）' : '');
+}
+
+function migrateLegacyCycle() {
+  ensureCycles();
+  if (state.cycles.length) {
+    state.cycles.forEach((c) => {
+      c.fixedItems = (c.fixedItems || []).map(normalizeFixedItem);
+    });
+    const cur = getCurrentCycle() || state.cycles[state.cycles.length - 1];
+    if (cur) bindCycleItems(cur);
+    return;
+  }
+  const s = state.settings;
+  if (s && s.start && s.end) {
+    const items = (state.fixedItems || s.fixedItems || defaultFixedItems()).map(normalizeFixedItem);
+    const cyc = {
+      id: uid(),
+      start: s.start,
+      end: s.end,
+      budget: s.budget || 0,
+      rWork: s.rWork,
+      rWeekend: s.rWeekend,
+      rHoliday: s.rHoliday,
+      fixedItems: items,
+      updatedAt: Date.now()
+    };
+    state.cycles.push(cyc);
+    bindCycleItems(cyc);
+  }
+}
+
 function load() {
   try {
     const s = JSON.parse(localStorage.getItem(KEY));
@@ -99,6 +281,7 @@ function load() {
       if (!state.dayTypes) state.dayTypes = {};
     }
   } catch (e) { /* ignore corrupt cache */ }
+  migrateLegacyCycle();
   ensureFixedItems();
 }
 function save() {
@@ -156,6 +339,7 @@ function build() {
     alert('请检查周期日期是否填写正确');
     return;
   }
+  resolveCycle(startEl, endEl);
   ensureFixedItems();
   const totalBudget = parseFloat($('budget').value) || 0;
   const fixed = fixedTotal();
@@ -201,11 +385,14 @@ function build() {
     rWeekend,
     rHoliday,
     holidays: DEFAULT_HOLIDAYS_2026.join(','),
-    makeup: DEFAULT_MAKEUP_2026.join(',')
+    makeup: DEFAULT_MAKEUP_2026.join(','),
+    currentCycleId: state.currentCycleId
   };
   if (!state.actuals) state.actuals = {};
   if (!state.dayTypes) state.dayTypes = {};
   save();
+  renderFixedList();
+  updateCycleLabel();
   render();
 }
 
@@ -349,20 +536,37 @@ function asOfToday() {
 function renderTodayBalance() {
   const box = $('todayBalanceBox');
   const info = asOfToday();
+  const paid = paidFixedTotal();
+  const unpaid = unpaidFixedTotal();
+  const monthBudget = (state.settings && Number(state.settings.budget)) || 0;
   if (!info) {
     box.innerHTML =
-      '<div class="label">📌 截至今日累积结余</div>' +
+      '<div class="label">📌 截至今日结余</div>' +
       '<div class="big" style="color:#94a3b8;">—</div>' +
       '<div class="sub">今天不在当前记账周期内</div>';
     return;
   }
-  const cls = info.bal >= 0 ? 'pos' : 'neg';
+  const flexCls = info.bal >= 0 ? 'pos' : 'neg';
+  const actualBal = cents(monthBudget - info.cumActual - paid);
+  const actCls = actualBal >= 0 ? 'pos' : 'neg';
   const typeTxt = info.inCycle ? typeInfo(info.last.type)[1] : '周期已过完';
   const asOf = info.inCycle ? info.todayStr : info.last.ds;
   box.innerHTML =
-    '<div class="label">📌 截至今日累积结余（' + asOf + ' · ' + typeTxt + '）</div>' +
-    '<div class="big ' + cls + '">' + signed(info.bal) + '</div>' +
-    '<div class="sub">截至今日应花 ¥' + money(info.cumShould) + '，已花 ¥' + money(info.cumActual) + '</div>';
+    '<div class="label">📌 截至 ' + asOf + ' · ' + typeTxt + '</div>' +
+    '<div class="bal-pair">' +
+      '<div class="bal-col">' +
+        '<div class="label">灵活结余</div>' +
+        '<div class="big ' + flexCls + '">' + signed(info.bal) + '</div>' +
+        '<div class="sub">日常额度还剩这些</div>' +
+      '</div>' +
+      '<div class="bal-col">' +
+        '<div class="label">实际结余</div>' +
+        '<div class="big ' + actCls + '">' + signed(actualBal) + '</div>' +
+        '<div class="sub">未付固定 ¥' + money(unpaid) + '</div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="sub">日常应花 ¥' + money(info.cumShould) + '，日常已花 ¥' + money(info.cumActual) +
+    '，固定已付 ¥' + money(paid) + '</div>';
 }
 
 function renderSummary() {
@@ -375,13 +579,17 @@ function renderSummary() {
   renderTodayBalance();
   renderTodaySpend();
   const flex = s.flexibleBudget != null ? s.flexibleBudget : s.budget;
+  const paid = paidFixedTotal();
+  const unpaid = unpaidFixedTotal();
+  const actualBal = cents((s.budget || 0) - cumActualAll - paid);
   $('summary').innerHTML =
     '<div class="stat"><div class="label">当月预算</div><div class="value">' + money(s.budget) + '</div></div>' +
-    '<div class="stat"><div class="label">固定消费</div><div class="value">' + money(s.fixedTotal || 0) + '</div></div>' +
+    '<div class="stat"><div class="label">固定应付</div><div class="value">' + money(s.fixedTotal || 0) + '</div></div>' +
+    '<div class="stat"><div class="label">固定已付 / 未付</div><div class="value">' + money(paid) + ' / ' + money(unpaid) + '</div></div>' +
     '<div class="stat"><div class="label">灵活预算</div><div class="value">' + money(flex) + '</div></div>' +
-    '<div class="stat"><div class="label">累计应花</div><div class="value">' + money(totalShould) + '</div></div>' +
-    '<div class="stat"><div class="label">累计实花</div><div class="value">' + money(cumActualAll) + '</div></div>' +
+    '<div class="stat"><div class="label">日常已花</div><div class="value">' + money(cumActualAll) + '</div></div>' +
     '<div class="stat"><div class="label">灵活结余</div><div class="value ' + (balance >= 0 ? 'pos' : 'neg') + '">' + signed(balance) + '</div></div>' +
+    '<div class="stat"><div class="label">实际结余</div><div class="value ' + (actualBal >= 0 ? 'pos' : 'neg') + '">' + signed(actualBal) + '</div></div>' +
     '<div class="stat"><div class="label">进度</div><div class="value">' + elapsed + '/' + currentRows.length + ' 天</div></div>';
 }
 
@@ -452,6 +660,9 @@ function exportCSV() {
   }
   const head = ['日期', '星期', '类型', '当日预算', '累计应花', '实际花销', '当日结余', '累计结余'];
   const lines = [head.join(',')];
+  lines.unshift('固定消费,' + state.fixedItems.map((it) =>
+    '"' + String(it.name || '').replace(/"/g, '""') + '",' + money(itemAmount(it)) + ',' + (it.paid ? '已付' : '未付')
+  ).join(','));
   let cumActual = 0;
   currentRows.forEach((r) => {
     const act = actualOf(r.ds);
@@ -494,12 +705,14 @@ function renderTodaySpend() {
 function updateFixedSummary() {
   const total = monthlyBudgetValue();
   const fixed = fixedTotal();
+  const paid = paidFixedTotal();
+  const unpaid = unpaidFixedTotal();
   const flex = cents(total - fixed);
   const flexCls = flex < 0 ? 'neg' : '';
   $('fixedSummary').innerHTML =
-    '当月预算 ¥' + money(total) +
-    ' − 固定 ¥' + money(fixed) +
-    ' ＝ 灵活 <span class="' + flexCls + '">¥' + money(flex) + '</span>' +
+    '应付 ¥' + money(fixed) +
+    '（已付 ¥' + money(paid) + ' / 未付 ¥' + money(unpaid) + '）' +
+    ' ｜ 灵活 <span class="' + flexCls + '">¥' + money(flex) + '</span>' +
     (flex < 0 ? '（已超预算）' : '');
 }
 
@@ -508,18 +721,24 @@ function renderFixedList() {
   const host = $('fixedList');
   host.innerHTML = state.fixedItems.map((it) => {
     const amountVal = it.amount === 0 || it.amount ? it.amount : '';
+    const paidCls = it.paid ? ' is-paid' : '';
+    const paidTxt = it.paid ? '已付' : '未付';
     return '<div class="fixed-item" data-id="' + escapeHtml(it.id) + '">' +
       '<input class="fixed-name" type="text" maxlength="20" value="' + escapeHtml(it.name) + '" placeholder="项目名称" aria-label="项目名称">' +
       '<input class="fixed-amount" type="number" inputmode="decimal" step="0.01" min="0" value="' + escapeHtml(amountVal) + '" placeholder="金额" aria-label="金额">' +
+      '<button class="btn-paid' + paidCls + '" type="button" data-paid aria-label="' + paidTxt + '">' + paidTxt + '</button>' +
       '<button class="btn-icon-del" type="button" data-del aria-label="删除">×</button>' +
       '</div>';
   }).join('');
   updateFixedSummary();
+  updateCycleLabel();
 }
 
 function addFixedItem() {
   ensureFixedItems();
-  state.fixedItems.push({ id: uid(), name: '', amount: '' });
+  state.fixedItems.push(normalizeFixedItem({ id: uid(), name: '', amount: '', paid: false }));
+  const cur = getCurrentCycle();
+  if (cur) cur.fixedItems = state.fixedItems;
   scheduleSave();
   renderFixedList();
   const names = document.querySelectorAll('#fixedList .fixed-name');
@@ -551,14 +770,16 @@ function addQuickSpend() {
 }
 
 function restoreSettings() {
-  const s = state.settings;
-  if (!s) return false;
+  const cur = getCurrentCycle();
+  const s = cur || state.settings;
+  if (!s || !s.start || !s.end) return false;
   $('start').value = s.start;
   $('end').value = s.end;
   $('budget').value = s.budget;
   $('rateWork').value = s.rWork;
   $('rateWeekend').value = s.rWeekend;
   $('rateHoliday').value = s.rHoliday;
+  if (cur) bindCycleItems(cur);
   return true;
 }
 
@@ -606,18 +827,38 @@ $('fixedList').addEventListener('input', (e) => {
   if (!item) return;
   if (e.target.classList.contains('fixed-name')) item.name = e.target.value;
   if (e.target.classList.contains('fixed-amount')) item.amount = e.target.value;
+  const cur = getCurrentCycle();
+  if (cur) cur.fixedItems = state.fixedItems;
   scheduleSave();
   updateFixedSummary();
+  if (currentRows.length) renderSummary();
 });
 
 $('fixedList').addEventListener('click', (e) => {
+  const paidBtn = e.target.closest('[data-paid]');
+  if (paidBtn) {
+    const row = paidBtn.closest('.fixed-item');
+    if (!row) return;
+    const item = state.fixedItems.find((x) => x.id === row.dataset.id);
+    if (!item) return;
+    item.paid = !item.paid;
+    const cur = getCurrentCycle();
+    if (cur) cur.fixedItems = state.fixedItems;
+    scheduleSave();
+    renderFixedList();
+    if (currentRows.length) renderSummary();
+    return;
+  }
   const del = e.target.closest('[data-del]');
   if (!del) return;
   const row = del.closest('.fixed-item');
   if (!row) return;
   state.fixedItems = state.fixedItems.filter((x) => x.id !== row.dataset.id);
+  const cur = getCurrentCycle();
+  if (cur) cur.fixedItems = state.fixedItems;
   scheduleSave();
   renderFixedList();
+  if (currentRows.length) renderSummary();
 });
 
 $('fixedAdd').addEventListener('click', addFixedItem);
@@ -636,6 +877,7 @@ window.addEventListener('DOMContentLoaded', () => {
   renderTodaySpend();
   if (restoreSettings()) build();
   else prefills();
+  updateCycleLabel();
   updateFixedSummary();
   $('gen').addEventListener('click', build);
   $('export').addEventListener('click', exportCSV);

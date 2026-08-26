@@ -59,6 +59,12 @@ h1 {
   min-width: 0;
 }
 
+.cycle-label {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
 input[type="date"] {
   display: block;
   min-width: 0;
@@ -182,7 +188,7 @@ button {
 
 .fixed-item {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 76px 28px;
+  grid-template-columns: minmax(0, 1fr) 64px 40px 28px;
   gap: 6px;
   align-items: center;
   margin-top: 6px;
@@ -191,6 +197,19 @@ button {
 .fixed-item input {
   padding: 6px 8px;
   font-size: 15px;
+}
+
+.btn-paid {
+  padding: 6px 0;
+  font-size: 11px;
+  background: #f3f4f6;
+  color: #6b7280;
+  line-height: 1;
+}
+
+.btn-paid.is-paid {
+  background: #dcfce7;
+  color: #166534;
 }
 
 .fixed-summary {
@@ -260,6 +279,17 @@ button {
   border: 1px solid #e2e8f0;
 }
 
+.bal-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 6px 0 4px;
+}
+
+.bal-col .big {
+  font-size: 28px;
+}
+
 .today-balance-box .label { font-size: 13px; color: #64748b; }
 .today-balance-box .big {
   font-size: 38px;
@@ -267,6 +297,7 @@ button {
   line-height: 1.2;
   word-break: break-all;
 }
+.today-balance-box .bal-col .big { font-size: 26px; }
 .today-balance-box .sub { font-size: 12px; color: #94a3b8; margin-top: 2px; }
 
 .month-block + .month-block { margin-top: 18px; }
@@ -471,8 +502,9 @@ button {
   .cal-cell { min-height: 64px; padding: 3px 2px 4px; }
   .cal-cell .tag { display: none; }
   .today-balance-box .big { font-size: 32px; }
+  .today-balance-box .bal-col .big { font-size: 22px; }
   .spend-head { flex-direction: column; gap: 6px; }
-  .fixed-item { grid-template-columns: minmax(0, 1fr) 68px 28px; }
+  .fixed-item { grid-template-columns: minmax(0, 1fr) 56px 36px 28px; }
 }
 
 @media (min-width: 640px) {
