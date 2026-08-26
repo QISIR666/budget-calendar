@@ -26,8 +26,8 @@
     </header>
 
     <div class="card" id="summaryCard" hidden>
-      <div class="today-balance-box" id="todayBalanceBox"></div>
       <div class="summary" id="summary"></div>
+      <div class="today-balance-box" id="todayBalanceBox"></div>
     </div>
 
     <div class="card fixed-card" id="fixedCard" hidden>
@@ -41,6 +41,17 @@
         </div>
         <div id="fixedList"></div>
         <div class="fixed-summary" id="fixedSummary"></div>
+      </div>
+      <div class="unexpected-section">
+        <div class="fixed-head">
+          <div>
+            <div class="spend-title">非预期大额消费</div>
+            <div class="spend-sub">不计入灵活/固定，只进总支出</div>
+          </div>
+          <button class="btn-ghost btn-add-fixed" id="unexpectedAdd" type="button">＋ 添加</button>
+        </div>
+        <div id="unexpectedList"></div>
+        <div class="unexpected-summary" id="unexpectedSummary" hidden></div>
       </div>
     </div>
 
@@ -97,7 +108,7 @@
     <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="cycleTitle">
       <div class="sheet-handle"></div>
       <h2 id="cycleTitle">周期</h2>
-      <p class="sheet-sub">点某一段可查看；删除只清该周期的预算、固定消费，以及仅属于它的每天花销。</p>
+      <p class="sheet-sub">点某一段可查看；删除只清该周期的预算、固定消费、非预期大额，以及仅属于它的每天花销。</p>
       <div class="sheet-scroll" id="cycleList"></div>
       <div class="actions">
         <button class="btn-primary" id="nextCycle" type="button">下一周期</button>

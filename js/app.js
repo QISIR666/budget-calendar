@@ -29,11 +29,11 @@ const DEFAULT_FIXED_ITEMS = [
   { id: 'parking', name: '停车费', amount: '' }
 ];
 
-let state = { settings: null, actuals: {}, dayTypes: {}, fixedItems: null, cycles: [], currentCycleId: null };
+let state = { settings: null, actuals: {}, dayTypes: {}, fixedItems: null, unexpectedItems: [], cycles: [], currentCycleId: null };
 let currentRows = [];
 let saveTimer = null;
 let selectedDs = null;
-const DATA_VERSION = 3;
+const DATA_VERSION = 4;
 const CYCLE_OVERLAP_THRESHOLD = 0.5;
 
 function fmtDate(d) {
@@ -96,6 +96,32 @@ function cloneFixedItems(items, resetPaid) {
     amount: it.amount,
     paid: resetPaid ? false : it.paid
   }));
+}
+function normalizeUnexpectedItem(it) {
+  return {
+    id: (it && it.id) || uid(),
+    name: (it && it.name) || '',
+    amount: it ? it.amount : ''
+  };
+}
+function ensureUnexpectedItems() {
+  ensureCycles();
+  if (!Array.isArray(state.unexpectedItems)) {
+    const cur = getCurrentCycle();
+    if (cur && Array.isArray(cur.unexpectedItems)) {
+      state.unexpectedItems = cur.unexpectedItems.map(normalizeUnexpectedItem);
+    } else {
+      state.unexpectedItems = [];
+    }
+  } else {
+    state.unexpectedItems = state.unexpectedItems.map(normalizeUnexpectedItem);
+  }
+  const cur = getCurrentCycle();
+  if (cur) cur.unexpectedItems = state.unexpectedItems;
+}
+function unexpectedTotal() {
+  ensureUnexpectedItems();
+  return cents(state.unexpectedItems.reduce((sum, it) => sum + itemAmount(it), 0));
 }
 function ensureCycles() {
   if (!Array.isArray(state.cycles)) state.cycles = [];
@@ -200,7 +226,9 @@ function writeFormMeta(cyc) {
 }
 function bindCycleItems(cyc) {
   cyc.fixedItems = (cyc.fixedItems || []).map(normalizeFixedItem);
+  cyc.unexpectedItems = (cyc.unexpectedItems || []).map(normalizeUnexpectedItem);
   state.fixedItems = cyc.fixedItems;
+  state.unexpectedItems = cyc.unexpectedItems;
   state.currentCycleId = cyc.id;
 }
 function applyWorkingToCycle(cyc, start, end) {
@@ -213,12 +241,15 @@ function applyWorkingToCycle(cyc, start, end) {
   cyc.rHoliday = meta.rHoliday;
   cyc.fixedItems = state.fixedItems.map(normalizeFixedItem);
   state.fixedItems = cyc.fixedItems;
+  cyc.unexpectedItems = (state.unexpectedItems || []).map(normalizeUnexpectedItem);
+  state.unexpectedItems = cyc.unexpectedItems;
   cyc.updatedAt = Date.now();
   state.currentCycleId = cyc.id;
 }
 function resolveCycle(start, end) {
   ensureCycles();
   ensureFixedItems();
+  ensureUnexpectedItems();
   const match = findMatchingCycle(start, end);
   const current = getCurrentCycle();
   if (match && current && match.id === current.id) {
@@ -241,7 +272,8 @@ function resolveCycle(start, end) {
     ...readFormMeta(),
     fixedItems: current
       ? cloneFixedItems(state.fixedItems, true)
-      : state.fixedItems.map(normalizeFixedItem)
+      : (state.fixedItems || defaultFixedItems()).map(normalizeFixedItem),
+    unexpectedItems: []
   };
   state.cycles.push(neu);
   bindCycleItems(neu);
@@ -283,6 +315,8 @@ function persistCurrentCycleInPlace() {
   cur.rHoliday = meta.rHoliday;
   cur.fixedItems = (state.fixedItems || []).map(normalizeFixedItem);
   state.fixedItems = cur.fixedItems;
+  cur.unexpectedItems = (state.unexpectedItems || []).map(normalizeUnexpectedItem);
+  state.unexpectedItems = cur.unexpectedItems;
   cur.updatedAt = Date.now();
 }
 function renderCycleList() {
@@ -318,7 +352,7 @@ function deleteCycle(id) {
   ensureCycles();
   const cyc = state.cycles.find((c) => c.id === id);
   if (!cyc) return;
-  if (!confirm('删除周期 ' + cyc.start + ' 至 ' + cyc.end + '？\n将删除该周期的预算、固定消费，以及仅属于该周期的每天花销。')) return;
+  if (!confirm('删除周期 ' + cyc.start + ' 至 ' + cyc.end + '？\n将删除该周期的预算、固定消费、非预期大额，以及仅属于该周期的每天花销。')) return;
   const remaining = state.cycles.filter((c) => c.id !== id);
   if (cyc.start && cyc.end) {
     const start = parseDate(cyc.start);
@@ -341,6 +375,7 @@ function deleteCycle(id) {
     } else {
       state.settings = null;
       state.fixedItems = defaultFixedItems();
+      state.unexpectedItems = [];
       currentRows = [];
       $('summaryCard').hidden = true;
       $('fixedCard').hidden = true;
@@ -348,6 +383,7 @@ function deleteCycle(id) {
       $('calCard').hidden = true;
       prefills();
       renderFixedList();
+      renderUnexpectedList();
       closeCycleSheet();
       openSettings();
     }
@@ -389,6 +425,7 @@ function migrateLegacyCycle() {
   if (state.cycles.length) {
     state.cycles.forEach((c) => {
       c.fixedItems = (c.fixedItems || []).map(normalizeFixedItem);
+      c.unexpectedItems = (c.unexpectedItems || []).map(normalizeUnexpectedItem);
     });
     const cur = getCurrentCycle() || state.cycles[state.cycles.length - 1];
     if (cur) bindCycleItems(cur);
@@ -406,6 +443,7 @@ function migrateLegacyCycle() {
       rWeekend: s.rWeekend,
       rHoliday: s.rHoliday,
       fixedItems: items,
+      unexpectedItems: [],
       updatedAt: Date.now()
     };
     state.cycles.push(cyc);
@@ -424,6 +462,7 @@ function load() {
   } catch (e) { /* ignore corrupt cache */ }
   migrateLegacyCycle();
   ensureFixedItems();
+  ensureUnexpectedItems();
 }
 function save() {
   localStorage.setItem(KEY, JSON.stringify(state));
@@ -578,6 +617,7 @@ function render() {
   $('calCard').hidden = false;
   $('summaryCard').hidden = false;
   renderSummary();
+  renderUnexpectedList();
 }
 
 function monthsInRange(start, end) {
@@ -682,7 +722,7 @@ function renderTodayBalance() {
   const info = asOfToday();
   if (!info) {
     box.innerHTML =
-      '<div class="label">📌 截至今日灵活结余</div>' +
+      '<div class="label">📌 截至今日累积灵活结余</div>' +
       '<div class="big" style="color:#94a3b8;">—</div>' +
       '<div class="sub">今天不在当前记账周期内</div>';
     return;
@@ -691,7 +731,7 @@ function renderTodayBalance() {
   const typeTxt = info.inCycle ? typeInfo(info.last.type)[1] : '周期已过完';
   const asOf = info.inCycle ? info.todayStr : info.last.ds;
   box.innerHTML =
-    '<div class="label">📌 截至今日灵活结余（' + asOf + ' · ' + typeTxt + '）</div>' +
+    '<div class="label">📌 截至今日累积灵活结余（' + asOf + ' · ' + typeTxt + '）</div>' +
     '<div class="big ' + flexCls + '">' + signed(info.bal) + '</div>' +
     '<div class="sub">截至今日应花 ¥' + money(info.cumShould) + '，已花 ¥' + money(info.cumActual) + '</div>';
 }
@@ -703,22 +743,25 @@ function renderSummary() {
   const balance = totalShould - cumActualAll;
   const todayStr = fmtDate(new Date());
   const elapsed = currentRows.filter((r) => r.ds <= todayStr).length;
+  const remaining = currentRows.filter((r) => r.ds >= todayStr).length;
   renderTodayBalance();
   renderTodaySpend();
   const paid = paidFixedTotal();
-  const unpaid = unpaidFixedTotal();
+  const unexpected = unexpectedTotal();
   const fixedNow = fixedTotal();
   const flex = cents((s.budget || 0) - fixedNow);
-  const actualBal = cents((s.budget || 0) - cumActualAll - paid);
+  const totalSpend = cents(cumActualAll + paid + unexpected);
+  const actualBal = cents((s.budget || 0) - totalSpend);
+  const dailyAvail = remaining > 0 ? cents(balance / remaining) : null;
   $('summary').innerHTML =
     '<div class="stat"><div class="label">当月预算</div><div class="value">' + money(s.budget) + '</div></div>' +
     '<div class="stat"><div class="label">灵活预算</div><div class="value">' + money(flex) + '</div></div>' +
-    '<div class="stat"><div class="label">固定应付</div><div class="value">' + money(fixedNow) + '</div></div>' +
-    '<div class="stat"><div class="label">固定已付 / 未付</div><div class="value">' + money(paid) + ' / ' + money(unpaid) + '</div></div>' +
     '<div class="stat"><div class="label">日常已花</div><div class="value">' + money(cumActualAll) + '</div></div>' +
+    '<div class="stat"><div class="label">总支出</div><div class="value">' + money(totalSpend) + '</div></div>' +
     '<div class="stat"><div class="label">灵活结余</div><div class="value ' + (balance >= 0 ? 'pos' : 'neg') + '">' + signed(balance) + '</div></div>' +
     '<div class="stat"><div class="label">实际结余</div><div class="value ' + (actualBal >= 0 ? 'pos' : 'neg') + '">' + signed(actualBal) + '</div></div>' +
-    '<div class="stat"><div class="label">进度</div><div class="value">' + elapsed + '/' + currentRows.length + ' 天</div></div>';
+    '<div class="stat"><div class="label">进度</div><div class="value">' + elapsed + '/' + currentRows.length + ' 天</div></div>' +
+    '<div class="stat"><div class="label">日均可花</div><div class="value">' + (dailyAvail == null ? '—' : money(dailyAvail)) + '</div></div>';
 }
 
 function syncTypeButtons(type) {
@@ -802,7 +845,8 @@ function exportBackup() {
       dayTypes: state.dayTypes || {},
       cycles: state.cycles || [],
       currentCycleId: state.currentCycleId,
-      fixedItems: state.fixedItems
+      fixedItems: state.fixedItems,
+      unexpectedItems: state.unexpectedItems || []
     }
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8;' });
@@ -812,7 +856,7 @@ function exportBackup() {
 function normalizeImportedState(raw) {
   const incoming = raw && raw.state ? raw.state : raw;
   if (!incoming || typeof incoming !== 'object') return null;
-  const hasData = incoming.actuals || incoming.cycles || incoming.settings || incoming.fixedItems;
+  const hasData = incoming.actuals || incoming.cycles || incoming.settings || incoming.fixedItems || incoming.unexpectedItems;
   if (!hasData) return null;
   return {
     settings: incoming.settings || null,
@@ -820,7 +864,8 @@ function normalizeImportedState(raw) {
     dayTypes: incoming.dayTypes || {},
     cycles: Array.isArray(incoming.cycles) ? incoming.cycles : [],
     currentCycleId: incoming.currentCycleId || null,
-    fixedItems: incoming.fixedItems || null
+    fixedItems: incoming.fixedItems || null,
+    unexpectedItems: Array.isArray(incoming.unexpectedItems) ? incoming.unexpectedItems : []
   };
 }
 
@@ -855,6 +900,11 @@ function exportCSV() {
   lines.unshift('固定消费,' + state.fixedItems.map((it) =>
     '"' + String(it.name || '').replace(/"/g, '""') + '",' + money(itemAmount(it)) + ',' + (it.paid ? '已付' : '未付')
   ).join(','));
+  if ((state.unexpectedItems || []).length) {
+    lines.unshift('非预期大额,' + state.unexpectedItems.map((it) =>
+      '"' + String(it.name || '').replace(/"/g, '""') + '",' + money(itemAmount(it))
+    ).join(','));
+  }
   let cumActual = 0;
   currentRows.forEach((r) => {
     const act = actualOf(r.ds);
@@ -930,6 +980,47 @@ function addFixedItem() {
   scheduleSave();
   renderFixedList();
   const names = document.querySelectorAll('#fixedList .fixed-name');
+  if (names.length) names[names.length - 1].focus();
+}
+
+function updateUnexpectedSummary() {
+  const box = $('unexpectedSummary');
+  if (!box) return;
+  ensureUnexpectedItems();
+  const items = state.unexpectedItems || [];
+  if (!items.length) {
+    box.hidden = true;
+    box.innerHTML = '';
+    return;
+  }
+  const total = unexpectedTotal();
+  box.hidden = false;
+  box.innerHTML = '已记 ¥' + money(total) + '（不计入灵活/固定，只进总支出）';
+}
+
+function renderUnexpectedList() {
+  ensureUnexpectedItems();
+  const host = $('unexpectedList');
+  if (!host) return;
+  host.innerHTML = state.unexpectedItems.map((it) => {
+    const amountVal = it.amount === 0 || it.amount ? it.amount : '';
+    return '<div class="unexpected-item" data-id="' + escapeHtml(it.id) + '">' +
+      '<input class="unexpected-name" type="text" maxlength="20" value="' + escapeHtml(it.name) + '" placeholder="项目，如医疗/修车" aria-label="项目名称">' +
+      '<input class="unexpected-amount" type="number" inputmode="decimal" step="0.01" min="0" value="' + escapeHtml(amountVal) + '" placeholder="金额" aria-label="金额">' +
+      '<button class="btn-icon-del" type="button" data-del aria-label="删除">×</button>' +
+      '</div>';
+  }).join('');
+  updateUnexpectedSummary();
+}
+
+function addUnexpectedItem() {
+  ensureUnexpectedItems();
+  state.unexpectedItems.push(normalizeUnexpectedItem({ id: uid(), name: '', amount: '' }));
+  const cur = getCurrentCycle();
+  if (cur) cur.unexpectedItems = state.unexpectedItems;
+  scheduleSave();
+  renderUnexpectedList();
+  const names = document.querySelectorAll('#unexpectedList .unexpected-name');
   if (names.length) names[names.length - 1].focus();
 }
 
@@ -1057,6 +1148,35 @@ $('fixedList').addEventListener('click', (e) => {
 $('fixedAdd').addEventListener('click', addFixedItem);
 $('budget').addEventListener('input', updateFixedSummary);
 
+$('unexpectedList').addEventListener('input', (e) => {
+  const row = e.target.closest('.unexpected-item');
+  if (!row) return;
+  const item = state.unexpectedItems.find((x) => x.id === row.dataset.id);
+  if (!item) return;
+  if (e.target.classList.contains('unexpected-name')) item.name = e.target.value;
+  if (e.target.classList.contains('unexpected-amount')) item.amount = e.target.value;
+  const cur = getCurrentCycle();
+  if (cur) cur.unexpectedItems = state.unexpectedItems;
+  scheduleSave();
+  updateUnexpectedSummary();
+  if (currentRows.length) renderSummary();
+});
+
+$('unexpectedList').addEventListener('click', (e) => {
+  const del = e.target.closest('[data-del]');
+  if (!del) return;
+  const row = del.closest('.unexpected-item');
+  if (!row) return;
+  state.unexpectedItems = state.unexpectedItems.filter((x) => x.id !== row.dataset.id);
+  const cur = getCurrentCycle();
+  if (cur) cur.unexpectedItems = state.unexpectedItems;
+  scheduleSave();
+  renderUnexpectedList();
+  if (currentRows.length) renderSummary();
+});
+
+$('unexpectedAdd').addEventListener('click', addUnexpectedItem);
+
 $('sheetTypes').addEventListener('click', (e) => {
   const btn = e.target.closest('.type-btn');
   if (!btn || !selectedDs) return;
@@ -1067,6 +1187,7 @@ $('sheetTypes').addEventListener('click', (e) => {
 window.addEventListener('DOMContentLoaded', () => {
   load();
   renderFixedList();
+  renderUnexpectedList();
   renderTodaySpend();
   if (restoreSettings()) build();
   else {
