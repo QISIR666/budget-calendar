@@ -17,50 +17,16 @@
 </head>
 <body>
   <div class="wrap">
-    <h1>📒 比例式预算记账本 <span class="save-status" id="saveStatus"></span></h1>
-
-    <div class="card">
-      <div class="date-row">
-        <div><label for="start">开始日期</label><input type="date" id="start"></div>
-        <div><label for="end">结束日期</label><input type="date" id="end"></div>
+    <header class="topbar">
+      <h1>📒 预算记账 <span class="save-status" id="saveStatus"></span></h1>
+      <div class="topbar-actions">
+        <button class="btn-ghost btn-compact" id="openCycle" type="button">周期</button>
+        <button class="btn-ghost btn-compact" id="openSettings" type="button">设置</button>
       </div>
-      <div class="cycle-switch">
-        <label for="cycleSelect">已保存周期</label>
-        <div class="cycle-switch-row">
-          <select id="cycleSelect" aria-label="选择已保存周期">
-            <option value="">暂无已保存周期</option>
-          </select>
-          <button class="btn-ghost" id="nextCycle" type="button">下一周期</button>
-        </div>
-      </div>
-      <div class="grid">
-        <div><label for="budget">当月预算（元）</label><input type="number" id="budget" inputmode="decimal" placeholder="如 2000"></div>
-        <div><label for="rateWork">工作日比例</label><input type="number" id="rateWork" inputmode="decimal" placeholder="如 30" step="any"></div>
-        <div><label for="rateWeekend">周末比例</label><input type="number" id="rateWeekend" inputmode="decimal" placeholder="如 100" step="any"></div>
-        <div><label for="rateHoliday">节假日比例</label><input type="number" id="rateHoliday" inputmode="decimal" placeholder="如 200" step="any"></div>
-      </div>
-      <div class="fixed-section">
-        <div class="fixed-head">
-          <div class="section-title">每月固定消费</div>
-          <button class="btn-ghost btn-add-fixed" id="fixedAdd" type="button">＋ 添加</button>
-        </div>
-        <div id="fixedList"></div>
-        <div class="fixed-summary" id="fixedSummary"></div>
-      </div>
-      <div class="actions">
-        <button class="btn-primary" id="gen" type="button">生成预算日历</button>
-        <button class="btn-ghost" id="exportData" type="button">导出数据</button>
-        <button class="btn-ghost" id="importData" type="button">导入数据</button>
-        <button class="btn-ghost" id="export" type="button">导出 CSV</button>
-        <button class="btn-danger" id="reset" type="button">清空全部记录</button>
-      </div>
-      <input id="importFile" type="file" accept="application/json,.json" hidden>
-      <div class="hint">💡 固定消费按周期保存。可用上方下拉切换已保存周期；「下一周期」会从结束日次日开始。勾「已付」才计入实际结余。建议定期导出数据备份。</div>
-    </div>
+    </header>
 
     <div class="card" id="summaryCard" hidden>
       <div class="today-balance-box" id="todayBalanceBox"></div>
-      <div class="ratebox" id="rateInfo"></div>
       <div class="summary" id="summary"></div>
     </div>
 
@@ -68,7 +34,7 @@
       <div class="spend-head">
         <div>
           <div class="spend-title">单次消费</div>
-          <div class="spend-sub" id="todaySpendHint">输入金额后点确定，累加到当天消费</div>
+          <div class="spend-sub" id="todaySpendHint">确定后累加到当天</div>
         </div>
         <div class="spend-today" id="todaySpendTotal">今天已花 ¥0.00</div>
       </div>
@@ -80,7 +46,57 @@
 
     <div class="card" id="calCard" hidden>
       <div id="calendars"></div>
-      <div class="hint">✅ 数据自动保存在本机（可离线使用）。输入数字后稍等，顶部出现「✓ 已保存」即可。建议用 Safari / Chrome「添加到主屏幕」。</div>
+    </div>
+  </div>
+
+  <div class="sheet-mask" id="settingsMask" hidden>
+    <div class="sheet sheet-tall" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+      <div class="sheet-handle"></div>
+      <h2 id="settingsTitle">设置</h2>
+      <div class="sheet-scroll">
+        <div class="date-row">
+          <div><label for="start">开始日期</label><input type="date" id="start"></div>
+          <div><label for="end">结束日期</label><input type="date" id="end"></div>
+        </div>
+        <div class="grid">
+          <div><label for="budget">当月预算（元）</label><input type="number" id="budget" inputmode="decimal" placeholder="如 2000"></div>
+          <div><label for="rateWork">工作日比例</label><input type="number" id="rateWork" inputmode="decimal" placeholder="如 30" step="any"></div>
+          <div><label for="rateWeekend">周末比例</label><input type="number" id="rateWeekend" inputmode="decimal" placeholder="如 100" step="any"></div>
+          <div><label for="rateHoliday">节假日比例</label><input type="number" id="rateHoliday" inputmode="decimal" placeholder="如 200" step="any"></div>
+        </div>
+        <div class="fixed-section">
+          <div class="fixed-head">
+            <div class="section-title">每月固定消费</div>
+            <button class="btn-ghost btn-add-fixed" id="fixedAdd" type="button">＋ 添加</button>
+          </div>
+          <div id="fixedList"></div>
+          <div class="fixed-summary" id="fixedSummary"></div>
+        </div>
+        <div class="ratebox" id="rateInfo"></div>
+        <div class="actions">
+          <button class="btn-primary" id="gen" type="button">生成预算日历</button>
+          <button class="btn-ghost" id="exportData" type="button">导出数据</button>
+          <button class="btn-ghost" id="importData" type="button">导入数据</button>
+          <button class="btn-ghost" id="export" type="button">导出 CSV</button>
+          <button class="btn-danger" id="reset" type="button">清空全部记录</button>
+        </div>
+        <input id="importFile" type="file" accept="application/json,.json" hidden>
+        <div class="hint">勾「已付」才计入实际结余。建议定期导出数据备份。</div>
+      </div>
+      <button class="btn-ghost sheet-done" id="settingsDone" type="button">关闭</button>
+    </div>
+  </div>
+
+  <div class="sheet-mask" id="cycleMask" hidden>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="cycleTitle">
+      <div class="sheet-handle"></div>
+      <h2 id="cycleTitle">周期</h2>
+      <p class="sheet-sub">点某一段可查看；删除只清该周期的预算、固定消费，以及仅属于它的每天花销。</p>
+      <div class="sheet-scroll" id="cycleList"></div>
+      <div class="actions">
+        <button class="btn-primary" id="nextCycle" type="button">下一周期</button>
+        <button class="btn-ghost sheet-done" id="cycleDone" type="button">关闭</button>
+      </div>
     </div>
   </div>
 

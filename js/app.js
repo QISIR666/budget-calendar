@@ -33,7 +33,6 @@ let state = { settings: null, actuals: {}, dayTypes: {}, fixedItems: null, cycle
 let currentRows = [];
 let saveTimer = null;
 let selectedDs = null;
-let cycleSelectLock = false;
 const DATA_VERSION = 3;
 const CYCLE_OVERLAP_THRESHOLD = 0.5;
 
@@ -248,6 +247,32 @@ function resolveCycle(start, end) {
   bindCycleItems(neu);
   return { cycle: neu, kind: 'new' };
 }
+function openMask(id) {
+  const m = $(id);
+  if (!m) return;
+  m.hidden = false;
+  m.removeAttribute('hidden');
+}
+function closeMask(id) {
+  const m = $(id);
+  if (!m) return;
+  m.hidden = true;
+  m.setAttribute('hidden', '');
+}
+function openSettings() {
+  updateFixedSummary();
+  openMask('settingsMask');
+}
+function closeSettings() {
+  closeMask('settingsMask');
+}
+function openCycleSheet() {
+  renderCycleList();
+  openMask('cycleMask');
+}
+function closeCycleSheet() {
+  closeMask('cycleMask');
+}
 function persistCurrentCycleInPlace() {
   const cur = getCurrentCycle();
   if (!cur) return;
@@ -260,27 +285,74 @@ function persistCurrentCycleInPlace() {
   state.fixedItems = cur.fixedItems;
   cur.updatedAt = Date.now();
 }
-function renderCycleSelect() {
-  const sel = $('cycleSelect');
-  if (!sel) return;
+function renderCycleList() {
+  const host = $('cycleList');
+  if (!host) return;
   ensureCycles();
   const cycles = state.cycles
     .filter((c) => c && c.start && c.end)
     .slice()
     .sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : String(a.end).localeCompare(String(b.end))));
-  cycleSelectLock = true;
   if (!cycles.length) {
-    sel.innerHTML = '<option value="">暂无已保存周期</option>';
-    sel.disabled = true;
-  } else {
-    sel.disabled = false;
-    sel.innerHTML = cycles.map((c) => {
-      const selected = c.id === state.currentCycleId ? ' selected' : '';
-      return '<option value="' + escapeHtml(c.id) + '"' + selected + '>' +
-        escapeHtml(c.start) + ' 至 ' + escapeHtml(c.end) + '</option>';
-    }).join('');
+    host.innerHTML = '<div class="cycle-empty">还没有已保存周期，先在设置里生成日历。</div>';
+    return;
   }
-  cycleSelectLock = false;
+  host.innerHTML = cycles.map((c) => {
+    const current = c.id === state.currentCycleId;
+    return '<div class="cycle-row' + (current ? ' is-current' : '') + '" data-id="' + escapeHtml(c.id) + '">' +
+      '<button type="button" class="cycle-pick" data-pick>' + escapeHtml(c.start) + ' 至 ' + escapeHtml(c.end) +
+      (current ? ' · 当前' : '') + '</button>' +
+      '<button type="button" class="btn-danger btn-compact" data-del-cycle>删除</button>' +
+      '</div>';
+  }).join('');
+}
+function renderCycleSelect() {
+  renderCycleList();
+}
+function dateCoveredByOtherCycle(ds, exceptId) {
+  return (state.cycles || []).some((c) =>
+    c && c.id !== exceptId && c.start && c.end && ds >= c.start && ds <= c.end
+  );
+}
+function deleteCycle(id) {
+  ensureCycles();
+  const cyc = state.cycles.find((c) => c.id === id);
+  if (!cyc) return;
+  if (!confirm('删除周期 ' + cyc.start + ' 至 ' + cyc.end + '？\n将删除该周期的预算、固定消费，以及仅属于该周期的每天花销。')) return;
+  const remaining = state.cycles.filter((c) => c.id !== id);
+  if (cyc.start && cyc.end) {
+    const start = parseDate(cyc.start);
+    const end = parseDate(cyc.end);
+    for (let d = new Date(start); d <= end; d = addDays(d, 1)) {
+      const ds = fmtDate(d);
+      if (!dateCoveredByOtherCycle(ds, id)) {
+        if (state.actuals) delete state.actuals[ds];
+        if (state.dayTypes) delete state.dayTypes[ds];
+      }
+    }
+  }
+  state.cycles = remaining;
+  const wasCurrent = state.currentCycleId === id;
+  if (wasCurrent) {
+    state.currentCycleId = null;
+    const fallback = remaining.slice().sort((a, b) => String(b.start).localeCompare(String(a.start)))[0];
+    if (fallback) {
+      switchToCycle(fallback.id);
+    } else {
+      state.settings = null;
+      state.fixedItems = defaultFixedItems();
+      currentRows = [];
+      $('summaryCard').hidden = true;
+      $('spendCard').hidden = true;
+      $('calCard').hidden = true;
+      prefills();
+      renderFixedList();
+      closeCycleSheet();
+      openSettings();
+    }
+  }
+  save();
+  renderCycleList();
 }
 function switchToCycle(id) {
   ensureCycles();
@@ -291,18 +363,20 @@ function switchToCycle(id) {
   $('end').value = cyc.end;
   writeFormMeta(cyc);
   bindCycleItems(cyc);
+  closeCycleSheet();
   build();
 }
 function goNextCycle() {
   const cur = getCurrentCycle();
   if (!cur || !cur.end) {
-    alert('请先生成当前周期');
+    alert('请先在设置里生成当前周期');
     return;
   }
   persistCurrentCycleInPlace();
   const next = nextCycleRange(cur);
   $('start').value = next.start;
   $('end').value = next.end;
+  closeCycleSheet();
   build();
 }
 function updateCycleLabel() {
@@ -460,6 +534,7 @@ function build() {
   renderFixedList();
   updateCycleLabel();
   render();
+  closeSettings();
 }
 
 function rowByDs(ds) {
@@ -909,7 +984,10 @@ $('sheetDone').addEventListener('click', (e) => {
 });
 
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && !$('sheetMask').hidden) closeSheet();
+  if (e.key !== 'Escape') return;
+  if (!$('sheetMask').hidden) closeSheet();
+  else if (!$('cycleMask').hidden) closeCycleSheet();
+  else if (!$('settingsMask').hidden) closeSettings();
 });
 
 $('sheetActual').addEventListener('input', (e) => {
@@ -985,16 +1063,32 @@ window.addEventListener('DOMContentLoaded', () => {
   renderFixedList();
   renderTodaySpend();
   if (restoreSettings()) build();
-  else prefills();
+  else {
+    prefills();
+    openSettings();
+  }
   updateCycleLabel();
   updateFixedSummary();
   $('gen').addEventListener('click', build);
+  $('openSettings').addEventListener('click', openSettings);
+  $('settingsDone').addEventListener('click', closeSettings);
+  $('settingsMask').addEventListener('click', (e) => {
+    if (e.target === $('settingsMask')) closeSettings();
+  });
+  $('openCycle').addEventListener('click', openCycleSheet);
+  $('cycleDone').addEventListener('click', closeCycleSheet);
+  $('cycleMask').addEventListener('click', (e) => {
+    if (e.target === $('cycleMask')) closeCycleSheet();
+  });
   $('nextCycle').addEventListener('click', goNextCycle);
-  $('cycleSelect').addEventListener('change', (e) => {
-    if (cycleSelectLock) return;
-    const id = e.target.value;
-    if (!id) return;
-    switchToCycle(id);
+  $('cycleList').addEventListener('click', (e) => {
+    const row = e.target.closest('.cycle-row');
+    if (!row) return;
+    if (e.target.closest('[data-del-cycle]')) {
+      deleteCycle(row.dataset.id);
+      return;
+    }
+    if (e.target.closest('[data-pick]')) switchToCycle(row.dataset.id);
   });
   $('export').addEventListener('click', exportCSV);
   $('exportData').addEventListener('click', exportBackup);
