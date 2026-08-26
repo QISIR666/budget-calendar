@@ -343,6 +343,7 @@ function deleteCycle(id) {
       state.fixedItems = defaultFixedItems();
       currentRows = [];
       $('summaryCard').hidden = true;
+      $('fixedCard').hidden = true;
       $('spendCard').hidden = true;
       $('calCard').hidden = true;
       prefills();
@@ -470,13 +471,14 @@ function classifyDay(ds, date, holidaySet, makeupSet) {
   return 'work';
 }
 
-function build() {
+function build(options) {
+  const silent = !!(options && options.silent);
   const startEl = $('start').value;
   const endEl = $('end').value;
   const start = parseDate(startEl);
   const end = parseDate(endEl);
   if (isNaN(start) || isNaN(end) || start > end) {
-    alert('请检查周期日期是否填写正确');
+    if (!silent) alert('请检查周期日期是否填写正确');
     return;
   }
   resolveCycle(startEl, endEl);
@@ -531,10 +533,10 @@ function build() {
   if (!state.actuals) state.actuals = {};
   if (!state.dayTypes) state.dayTypes = {};
   save();
-  renderFixedList();
+  if (!silent) renderFixedList();
   updateCycleLabel();
   render();
-  closeSettings();
+  if (!silent) closeSettings();
 }
 
 function rowByDs(ds) {
@@ -571,6 +573,7 @@ function render() {
     '（调休上班按工作日）';
 
   renderCalendars();
+  $('fixedCard').hidden = false;
   $('spendCard').hidden = false;
   $('calCard').hidden = false;
   $('summaryCard').hidden = false;
@@ -702,15 +705,16 @@ function renderSummary() {
   const elapsed = currentRows.filter((r) => r.ds <= todayStr).length;
   renderTodayBalance();
   renderTodaySpend();
-  const flex = s.flexibleBudget != null ? s.flexibleBudget : s.budget;
   const paid = paidFixedTotal();
   const unpaid = unpaidFixedTotal();
+  const fixedNow = fixedTotal();
+  const flex = cents((s.budget || 0) - fixedNow);
   const actualBal = cents((s.budget || 0) - cumActualAll - paid);
   $('summary').innerHTML =
     '<div class="stat"><div class="label">当月预算</div><div class="value">' + money(s.budget) + '</div></div>' +
-    '<div class="stat"><div class="label">固定应付</div><div class="value">' + money(s.fixedTotal || 0) + '</div></div>' +
-    '<div class="stat"><div class="label">固定已付 / 未付</div><div class="value">' + money(paid) + ' / ' + money(unpaid) + '</div></div>' +
     '<div class="stat"><div class="label">灵活预算</div><div class="value">' + money(flex) + '</div></div>' +
+    '<div class="stat"><div class="label">固定应付</div><div class="value">' + money(fixedNow) + '</div></div>' +
+    '<div class="stat"><div class="label">固定已付 / 未付</div><div class="value">' + money(paid) + ' / ' + money(unpaid) + '</div></div>' +
     '<div class="stat"><div class="label">日常已花</div><div class="value">' + money(cumActualAll) + '</div></div>' +
     '<div class="stat"><div class="label">灵活结余</div><div class="value ' + (balance >= 0 ? 'pos' : 'neg') + '">' + signed(balance) + '</div></div>' +
     '<div class="stat"><div class="label">实际结余</div><div class="value ' + (actualBal >= 0 ? 'pos' : 'neg') + '">' + signed(actualBal) + '</div></div>' +
@@ -1018,7 +1022,9 @@ $('fixedList').addEventListener('input', (e) => {
   if (cur) cur.fixedItems = state.fixedItems;
   scheduleSave();
   updateFixedSummary();
-  if (currentRows.length) renderSummary();
+  if (!currentRows.length) return;
+  if (e.target.classList.contains('fixed-amount')) build({ silent: true });
+  else renderSummary();
 });
 
 $('fixedList').addEventListener('click', (e) => {
@@ -1045,7 +1051,7 @@ $('fixedList').addEventListener('click', (e) => {
   if (cur) cur.fixedItems = state.fixedItems;
   scheduleSave();
   renderFixedList();
-  if (currentRows.length) renderSummary();
+  if (currentRows.length) build({ silent: true });
 });
 
 $('fixedAdd').addEventListener('click', addFixedItem);
@@ -1069,7 +1075,7 @@ window.addEventListener('DOMContentLoaded', () => {
   }
   updateCycleLabel();
   updateFixedSummary();
-  $('gen').addEventListener('click', build);
+  $('gen').addEventListener('click', () => build());
   $('openSettings').addEventListener('click', openSettings);
   $('settingsDone').addEventListener('click', closeSettings);
   $('settingsMask').addEventListener('click', (e) => {
